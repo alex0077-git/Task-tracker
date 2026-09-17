@@ -76,10 +76,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   Future<void> _pickDueDate() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final selected = await showDatePicker(
       context: context,
-      initialDate: _dueDate ?? now,
-      firstDate: DateTime(now.year - 5),
+      initialDate: _dueDate ?? today,
+      firstDate: _isEditing ? DateTime(now.year - 5) : today,
       lastDate: DateTime(now.year + 5),
     );
     if (selected != null) {

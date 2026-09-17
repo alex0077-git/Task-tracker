@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
 import 'task_detail_screen.dart';
@@ -19,6 +21,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   List<Task> _tasks = [];
   bool _isLoading = true;
   bool _sortByPriority = false;
+  bool _overdueOnly = false;
 
   @override
   void initState() {
@@ -30,7 +33,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
     setState(() {
       _isLoading = true;
     });
-    final tasks = await ApiService.instance.getTasks();
+    final tasks = await ApiService.instance.getTasks(
+      overdueOnly: _overdueOnly,
+    );
     if (!mounted) {
       return;
     }
@@ -115,6 +120,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
           if (item.id == task.id) _taskWithStatus(item, newStatus) else item,
       ];
     });
+    if (_overdueOnly) {
+      await _loadTasks();
+    }
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Status updated to $newStatus')),
     );
@@ -137,11 +148,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
     });
   }
 
-  String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
+  void _toggleOverdueFilter(bool selected) {
+    setState(() {
+      _overdueOnly = selected;
+    });
+    _loadTasks();
+  }
+
+  String _formatDueDate(DateTime date) {
+    return 'Due: ${DateFormat('d MMM yyyy').format(date)}';
   }
 
   @override
@@ -176,59 +191,108 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadTasks,
-              child: _visibleTasks.isEmpty
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: Text('No tasks yet')),
-                      ],
-                    )
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: _visibleTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = _visibleTasks[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          child: ListTile(
-                            title: Text(task.title),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${task.assigneeName}  •  ${_formatDate(task.dueDate)}',
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    PriorityTag(priority: task.priority),
-                                    StatusTag(status: task.status),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            isThreeLine: true,
-                            trailing: IconButton(
-                              onPressed: () => _advanceStatus(task),
-                              icon: const Icon(Icons.arrow_forward),
-                              tooltip: 'Advance status',
-                            ),
-                            onTap: () => _openTaskDetail(task),
-                          ),
-                        );
-                      },
-                    ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                label: const Text('Overdue only'),
+                selected: _overdueOnly,
+                onSelected: _toggleOverdueFilter,
+              ),
             ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadTasks,
+                    child: _visibleTasks.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  _overdueOnly
+                                      ? 'No overdue tasks'
+                                      : 'No tasks yet',
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: _visibleTasks.length,
+                            itemBuilder: (context, index) {
+                              final task = _visibleTasks[index];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: task.isOverdue
+                                            ? const Color(0xFFC62828)
+                                            : Colors.transparent,
+                                        width: 4,
+                                      ),
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    title: Text(task.title),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(task.assigneeName),
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            Text(_formatDueDate(task.dueDate)),
+                                            if (task.isOverdue)
+                                              const OverdueBadge(),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            PriorityTag(
+                                              priority: task.priority,
+                                            ),
+                                            StatusTag(status: task.status),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    isThreeLine: true,
+                                    trailing: IconButton(
+                                      onPressed: () => _advanceStatus(task),
+                                      icon: const Icon(Icons.arrow_forward),
+                                      tooltip: 'Advance status',
+                                    ),
+                                    onTap: () => _openTaskDetail(task),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreateForm,
         tooltip: 'Create task',

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
 import 'task_form_screen.dart';
@@ -26,11 +28,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     _task = widget.task;
   }
 
-  String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
+  String _formatDueDate(DateTime date) {
+    return 'Due: ${DateFormat('d MMM yyyy').format(date)}';
   }
 
   Future<void> _openEditForm() async {
@@ -349,7 +348,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Due date'),
-            subtitle: Text(_formatDate(_task.dueDate)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(_formatDueDate(_task.dueDate)),
+                  if (_task.isOverdue) const OverdueBadge(),
+                ],
+              ),
+            ),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,

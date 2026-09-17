@@ -19,9 +19,20 @@ class ApiService {
 
   final CookieJar cookieJar = CookieJar();
 
+  // Phone and Chrome must hit the SAME Django process. Chrome runs at
+  // http://localhost:<port>, so it must call localhost (same-site cookies).
+  // The phone cannot use localhost (that would be the phone itself), so it
+  // uses this machine's LAN address instead.
+  static String get _baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:8000/api/';
+    }
+    return 'http://192.168.0.102:8000/api/';
+  }
+
   final Dio dio = Dio(
     BaseOptions(
-      baseUrl: 'http://192.168.0.102:8000/api/',
+      baseUrl: _baseUrl,
       headers: const {'Content-Type': 'application/json'},
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
@@ -58,9 +69,14 @@ class ApiService {
     }
   }
 
-  Future<List<Task>> getTasks() async {
+  Future<List<Task>> getTasks({bool overdueOnly = false}) async {
     try {
-      final response = await dio.get('tasks/');
+      final response = await dio.get(
+        'tasks/',
+        queryParameters: {
+          if (overdueOnly) 'overdue': 'true',
+        },
+      );
       if (response.statusCode != 200 || response.data is! List) {
         return [];
       }

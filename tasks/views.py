@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny
@@ -53,7 +54,12 @@ class TaskViewSet(viewsets.ModelViewSet):
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
-        return Task.objects.all().order_by("-created_at")
+        queryset = Task.objects.all().order_by("-created_at")
+        if self.request.query_params.get("overdue") == "true":
+            queryset = queryset.filter(
+                due_date__lt=timezone.now().date(),
+            ).exclude(status=Task.Status.COMPLETED)
+        return queryset
 
 
 class UserListView(APIView):
