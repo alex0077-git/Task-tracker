@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
@@ -17,6 +18,7 @@ class TaskListScreen extends StatefulWidget {
 class _TaskListScreenState extends State<TaskListScreen> {
   List<Task> _tasks = [];
   bool _isLoading = true;
+  bool _sortByPriority = false;
 
   @override
   void initState() {
@@ -118,6 +120,23 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
+  List<Task> get _visibleTasks {
+    if (!_sortByPriority) {
+      return _tasks;
+    }
+
+    const rank = {'High': 0, 'Medium': 1, 'Low': 2};
+    return [..._tasks]..sort((a, b) {
+      return (rank[a.priority] ?? 3).compareTo(rank[b.priority] ?? 3);
+    });
+  }
+
+  void _togglePrioritySort() {
+    setState(() {
+      _sortByPriority = !_sortByPriority;
+    });
+  }
+
   String _formatDate(DateTime date) {
     final year = date.year.toString().padLeft(4, '0');
     final month = date.month.toString().padLeft(2, '0');
@@ -142,6 +161,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
             tooltip: 'Workload',
           ),
           IconButton(
+            onPressed: _togglePrioritySort,
+            icon: Icon(
+              _sortByPriority ? Icons.flag : Icons.flag_outlined,
+            ),
+            tooltip: _sortByPriority
+                ? 'Default order'
+                : 'Sort by priority',
+          ),
+          IconButton(
             onPressed: _isLoading ? null : _loadTasks,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -152,7 +180,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadTasks,
-              child: _tasks.isEmpty
+              child: _visibleTasks.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: const [
@@ -162,9 +190,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     )
                   : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: _tasks.length,
+                      itemCount: _visibleTasks.length,
                       itemBuilder: (context, index) {
-                        final task = _tasks[index];
+                        final task = _visibleTasks[index];
                         return Card(
                           margin: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -176,10 +204,17 @@ class _TaskListScreenState extends State<TaskListScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${task.assigneeName}  •  ${task.priority}  •  ${_formatDate(task.dueDate)}',
+                                  '${task.assigneeName}  •  ${_formatDate(task.dueDate)}',
                                 ),
                                 const SizedBox(height: 6),
-                                StatusTag(status: task.status),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    PriorityTag(priority: task.priority),
+                                    StatusTag(status: task.status),
+                                  ],
+                                ),
                               ],
                             ),
                             isThreeLine: true,

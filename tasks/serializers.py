@@ -14,6 +14,7 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee_name = serializers.CharField(source="assignee.username", read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
     status = serializers.CharField()
+    priority = serializers.CharField()
 
     class Meta:
         model = Task
@@ -38,11 +39,6 @@ class TaskSerializer(serializers.ModelSerializer):
                     "required": "Due date is required.",
                 }
             },
-            "priority": {
-                "error_messages": {
-                    "invalid_choice": "Priority must be one of: Low, Medium, High.",
-                }
-            },
         }
 
     def validate_status(self, value):
@@ -53,4 +49,14 @@ class TaskSerializer(serializers.ModelSerializer):
         }
         if value not in valid_statuses:
             raise serializers.ValidationError("Invalid status value")
+        return value
+
+    def validate_priority(self, value):
+        valid_priorities = {
+            Task.Priority.LOW,
+            Task.Priority.MEDIUM,
+            Task.Priority.HIGH,
+        }
+        if value not in valid_priorities:
+            raise serializers.ValidationError("Invalid priority value")
         return value

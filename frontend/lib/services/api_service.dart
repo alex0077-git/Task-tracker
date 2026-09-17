@@ -139,4 +139,16 @@ class ApiService {
       return false;
     }
   }
+
+  Future<bool> updateTaskPriority(int taskId, String newPriority) async {
+    try {
+      final response = await dio.patch(
+        'tasks/$taskId/',
+        data: {'priority': newPriority},
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

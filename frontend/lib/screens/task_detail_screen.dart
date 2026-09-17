@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
 import 'task_form_screen.dart';
 
@@ -242,6 +243,29 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     await _refreshTask();
   }
 
+  Future<void> _setPriority(String newPriority) async {
+    if (_task.id == null || _task.priority == newPriority) {
+      return;
+    }
+
+    final success = await ApiService.instance.updateTaskPriority(
+      _task.id!,
+      newPriority,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update priority')),
+      );
+      return;
+    }
+
+    await _refreshTask();
+  }
+
   @override
   Widget build(BuildContext context) {
     final description = _task.description.trim().isEmpty
@@ -265,7 +289,30 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Priority'),
-            subtitle: Text(_task.priority),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  PriorityTag(priority: _task.priority),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final priority in const ['Low', 'Medium', 'High'])
+                        ChoiceChip(
+                          label: Text(priority),
+                          selected: _task.priority == priority,
+                          onSelected: _isDeleting
+                              ? null
+                              : (_) => _setPriority(priority),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
