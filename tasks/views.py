@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny
@@ -61,3 +62,32 @@ class UserListView(APIView):
     def get(self, request):
         users = User.objects.all().order_by("username")
         return Response(UserSerializer(users, many=True).data)
+
+
+class UserWorkloadView(APIView):
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get(self, request):
+        users = User.objects.annotate(
+            total_tasks=Count("tasks"),
+            completed=Count(
+                "tasks",
+                filter=Q(tasks__status=Task.Status.COMPLETED),
+            ),
+            pending=Count(
+                "tasks",
+                filter=~Q(tasks__status=Task.Status.COMPLETED),
+            ),
+        ).order_by("username")
+
+        workload = [
+            {
+                "id": user.id,
+                "username": user.username,
+                "total_tasks": user.total_tasks,
+                "completed": user.completed,
+                "pending": user.pending,
+            }
+            for user in users
+        ]
+        return Response(workload)

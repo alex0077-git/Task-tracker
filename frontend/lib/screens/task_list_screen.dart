@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/status_tag.dart';
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
+import 'workload_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
   const TaskListScreen({super.key});
@@ -52,6 +54,70 @@ class _TaskListScreenState extends State<TaskListScreen> {
     await _loadTasks();
   }
 
+  String? _nextStatus(String status) {
+    switch (status) {
+      case 'To Do':
+        return 'In Progress';
+      case 'In Progress':
+        return 'Completed';
+      default:
+        return null;
+    }
+  }
+
+  Task _taskWithStatus(Task task, String status) {
+    final today = DateTime.now();
+    final dueDate = DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day);
+    final todayDate = DateTime(today.year, today.month, today.day);
+    return Task(
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      status: status,
+      dueDate: task.dueDate,
+      assignee: task.assignee,
+      assigneeName: task.assigneeName,
+      isOverdue: status != 'Completed' && dueDate.isBefore(todayDate),
+    );
+  }
+
+  Future<void> _advanceStatus(Task task) async {
+    if (task.id == null) {
+      return;
+    }
+
+    final newStatus = _nextStatus(task.status);
+    if (newStatus == null) {
+      return;
+    }
+
+    final success = await ApiService.instance.updateTaskStatus(
+      task.id!,
+      newStatus,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update status')),
+      );
+      return;
+    }
+
+    setState(() {
+      _tasks = [
+        for (final item in _tasks)
+          if (item.id == task.id) _taskWithStatus(item, newStatus) else item,
+      ];
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Status updated to $newStatus')),
+    );
+  }
+
   String _formatDate(DateTime date) {
     final year = date.year.toString().padLeft(4, '0');
     final month = date.month.toString().padLeft(2, '0');
@@ -65,6 +131,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
       appBar: AppBar(
         title: const Text('Tasks'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const WorkloadScreen()),
+              );
+            },
+            icon: const Icon(Icons.people_outline),
+            tooltip: 'Workload',
+          ),
           IconButton(
             onPressed: _isLoading ? null : _loadTasks,
             icon: const Icon(Icons.refresh),
@@ -96,8 +172,21 @@ class _TaskListScreenState extends State<TaskListScreen> {
                           ),
                           child: ListTile(
                             title: Text(task.title),
-                            subtitle: Text(
-                              '${task.assigneeName}  •  ${task.priority}  •  ${task.status}  •  ${_formatDate(task.dueDate)}',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${task.assigneeName}  •  ${task.priority}  •  ${_formatDate(task.dueDate)}',
+                                ),
+                                const SizedBox(height: 6),
+                                StatusTag(status: task.status),
+                              ],
+                            ),
+                            isThreeLine: true,
+                            trailing: IconButton(
+                              onPressed: () => _advanceStatus(task),
+                              icon: const Icon(Icons.arrow_forward),
+                              tooltip: 'Advance status',
                             ),
                             onTap: () => _openTaskDetail(task),
                           ),

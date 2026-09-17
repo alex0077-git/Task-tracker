@@ -101,4 +101,42 @@ class ApiService {
       return false;
     }
   }
+
+  Future<List<Map<String, dynamic>>> getUserWorkload() async {
+    try {
+      final response = await dio.get('users/workload/');
+      if (response.statusCode != 200 || response.data is! List) {
+        return [];
+      }
+      return (response.data as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> reassignTask(int taskId, int newAssigneeId) async {
+    try {
+      final response = await dio.patch(
+        'tasks/$taskId/',
+        data: {'assignee': newAssigneeId},
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateTaskStatus(int taskId, String newStatus) async {
+    try {
+      final response = await dio.patch(
+        'tasks/$taskId/',
+        data: {'status': newStatus},
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

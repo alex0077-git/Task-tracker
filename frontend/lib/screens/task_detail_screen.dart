@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../widgets/status_tag.dart';
 import 'task_form_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -40,7 +42,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (!mounted || didSave != true || _task.id == null) {
       return;
     }
+    await _refreshTask();
+  }
 
+  Future<void> _refreshTask() async {
+    if (_task.id == null) {
+      return;
+    }
     final tasks = await ApiService.instance.getTasks();
     final updated = tasks.where((task) => task.id == _task.id);
     if (!mounted || updated.isEmpty) {
@@ -49,6 +57,115 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     setState(() {
       _task = updated.first;
     });
+  }
+
+  Future<void> _openReassignDialog() async {
+    if (_task.id == null) {
+      return;
+    }
+
+    final users = await ApiService.instance.getUsers();
+    if (!mounted) {
+      return;
+    }
+
+    AppUser? selected;
+    for (final user in users) {
+      if (user.id == _task.assignee) {
+        selected = user;
+        break;
+      }
+    }
+    selected ??= users.isEmpty ? null : users.first;
+
+    final newAssignee = await showDialog<AppUser>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        var isSaving = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reassign task'),
+              content: users.isEmpty
+                  ? const Text('No users available')
+                  : DropdownButton<AppUser>(
+                      isExpanded: true,
+                      value: selected,
+                      items: users
+                          .map(
+                            (user) => DropdownMenuItem(
+                              value: user,
+                              child: Text(user.username),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              setDialogState(() {
+                                selected = value;
+                              });
+                            },
+                    ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving
+                      ? null
+                      : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: isSaving || selected == null
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isSaving = true;
+                          });
+                          final success = await ApiService.instance
+                              .reassignTask(_task.id!, selected!.id);
+                          if (!context.mounted) {
+                            return;
+                          }
+                          if (success) {
+                            Navigator.pop(context, selected);
+                            return;
+                          }
+                          setDialogState(() {
+                            isSaving = false;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not reassign task'),
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || newAssignee == null) {
+      return;
+    }
+
+    await _refreshTask();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Reassigned to ${newAssignee.username}')),
+    );
   }
 
   Future<void> _confirmDelete() async {
@@ -102,6 +219,29 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
+  Future<void> _setStatus(String newStatus) async {
+    if (_task.id == null || _task.status == newStatus) {
+      return;
+    }
+
+    final success = await ApiService.instance.updateTaskStatus(
+      _task.id!,
+      newStatus,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update status')),
+      );
+      return;
+    }
+
+    await _refreshTask();
+  }
+
   @override
   Widget build(BuildContext context) {
     final description = _task.description.trim().isEmpty
@@ -130,7 +270,34 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Status'),
-            subtitle: Text(_task.status),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StatusTag(status: _task.status),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final status in const [
+                        'To Do',
+                        'In Progress',
+                        'Completed',
+                      ])
+                        ChoiceChip(
+                          label: Text(status),
+                          selected: _task.status == status,
+                          onSelected: _isDeleting
+                              ? null
+                              : (_) => _setStatus(status),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -151,7 +318,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   child: const Text('Edit'),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isDeleting ? null : _openReassignDialog,
+                  child: const Text('Reassign'),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
                   onPressed: _isDeleting ? null : _confirmDelete,
