@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/app_user.dart';
 import '../models/task.dart';
+import '../models/task_comment.dart';
 
 class ApiService {
   ApiService._() {
@@ -18,6 +19,7 @@ class ApiService {
   static final ApiService instance = ApiService._();
 
   final CookieJar cookieJar = CookieJar();
+  AppUser? currentUser;
 
   // Phone and Chrome must hit the SAME Django process. Chrome runs at
   // http://localhost:<port>, so it must call localhost (same-site cookies).
@@ -40,7 +42,9 @@ class ApiService {
     ),
   );
 
-  Future<bool> login(String username, String password) async {
+  bool get isManager => currentUser?.isManager ?? false;
+
+  Future<AppUser?> login(String username, String password) async {
     try {
       final response = await dio.post(
         'login/',
@@ -49,10 +53,27 @@ class ApiService {
           'password': password,
         },
       );
-      return response.statusCode == 200;
+      if (response.statusCode != 200 || response.data is! Map) {
+        currentUser = null;
+        return null;
+      }
+      currentUser = AppUser.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+      return currentUser;
     } catch (_) {
-      return false;
+      currentUser = null;
+      return null;
     }
+  }
+
+  Future<void> logout() async {
+    try {
+      await dio.post('logout/');
+    } catch (_) {
+      // Session is cleared locally even if the server call fails.
+    }
+    currentUser = null;
   }
 
   Future<List<AppUser>> getUsers() async {
@@ -66,6 +87,29 @@ class ApiService {
           .toList();
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<String?> createUser({
+    required String username,
+    required String password,
+    required bool isStaff,
+  }) async {
+    try {
+      final response = await dio.post(
+        'users/',
+        data: {
+          'username': username,
+          'password': password,
+          'is_staff': isStaff,
+        },
+      );
+      if (response.statusCode == 201) {
+        return null;
+      }
+      return 'Could not create user';
+    } on DioException catch (error) {
+      return _messageFromError(error);
     }
   }
 
@@ -88,24 +132,30 @@ class ApiService {
     }
   }
 
-  Future<bool> createTask(Task task) async {
+  Future<String?> createTask(Task task) async {
     try {
       final response = await dio.post('tasks/', data: task.toJson());
-      return response.statusCode == 201;
-    } catch (_) {
-      return false;
+      if (response.statusCode == 201) {
+        return null;
+      }
+      return 'Could not save task';
+    } on DioException catch (error) {
+      return _messageFromError(error);
     }
   }
 
-  Future<bool> updateTask(Task task) async {
+  Future<String?> updateTask(Task task) async {
     if (task.id == null) {
-      return false;
+      return 'Task is missing an id';
     }
     try {
       final response = await dio.patch('tasks/${task.id}/', data: task.toJson());
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
+      if (response.statusCode == 200) {
+        return null;
+      }
+      return 'Could not save task';
+    } on DioException catch (error) {
+      return _messageFromError(error);
     }
   }
 
@@ -132,15 +182,18 @@ class ApiService {
     }
   }
 
-  Future<bool> reassignTask(int taskId, int newAssigneeId) async {
+  Future<String?> reassignTask(int taskId, int newAssigneeId) async {
     try {
       final response = await dio.patch(
         'tasks/$taskId/',
         data: {'assignee': newAssigneeId},
       );
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
+      if (response.statusCode == 200) {
+        return null;
+      }
+      return 'Could not reassign task';
+    } on DioException catch (error) {
+      return _messageFromError(error);
     }
   }
 
@@ -166,5 +219,70 @@ class ApiService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<List<TaskComment>> getComments(int taskId) async {
+    try {
+      final response = await dio.get('tasks/$taskId/comments/');
+      if (response.statusCode != 200 || response.data is! List) {
+        return [];
+      }
+      return (response.data as List)
+          .map((item) => TaskComment.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<String?> addComment(int taskId, String body) async {
+    try {
+      final response = await dio.post(
+        'tasks/$taskId/comments/',
+        data: {'body': body},
+      );
+      if (response.statusCode == 201) {
+        return null;
+      }
+      return 'Could not add comment';
+    } on DioException catch (error) {
+      return _messageFromError(error);
+    }
+  }
+
+  Future<Map<String, dynamic>> getDashboardCounts() async {
+    try {
+      final response = await dio.get('dashboard/');
+      if (response.statusCode != 200 || response.data is! Map) {
+        return {};
+      }
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  String _messageFromError(DioException error) {
+    final data = error.response?.data;
+    if (data is Map) {
+      if (data['detail'] is String) {
+        return data['detail'] as String;
+      }
+      if (data['error'] is String) {
+        return data['error'] as String;
+      }
+      final messages = <String>[];
+      for (final value in data.values) {
+        if (value is String) {
+          messages.add(value);
+        } else if (value is List && value.isNotEmpty) {
+          messages.add(value.first.toString());
+        }
+      }
+      if (messages.isNotEmpty) {
+        return messages.join(' ');
+      }
+    }
+    return 'Request failed';
   }
 }

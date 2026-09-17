@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
-import 'task_list_screen.dart';
+import 'role_home.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,15 +29,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    var success = false;
-    try {
-      success = await ApiService.instance.login(
-        _usernameController.text.trim(),
-        _passwordController.text,
-      );
-    } catch (_) {
-      success = false;
-    }
+    final user = await ApiService.instance.login(
+      _usernameController.text.trim(),
+      _passwordController.text,
+    );
 
     if (!mounted) {
       return;
@@ -45,15 +40,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       _isLoading = false;
-      if (!success) {
+      if (user == null) {
         _errorMessage = 'Invalid username or password';
       }
     });
 
-    if (success) {
+    if (user != null) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const TaskListScreen()),
+        MaterialPageRoute(builder: (context) => homeForUser(user)),
       );
     }
   }
@@ -72,10 +67,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Task Tracker',
+                    'Task Manager',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Manage Tasks. Build Teams. Get Things Done.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade700,
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -109,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Login'),
+                        : const Text('Log in'),
                   ),
                   if (_errorMessage != null) ...[
                     const SizedBox(height: 16),

@@ -129,7 +129,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       isOverdue: false,
     );
 
-    final success = _isEditing
+    final error = _isEditing
         ? await ApiService.instance.updateTask(task)
         : await ApiService.instance.createTask(task);
     if (!mounted) {
@@ -138,16 +138,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
     setState(() {
       _isSaving = false;
+      _validationError = error;
     });
 
-    if (success) {
+    if (error == null) {
       Navigator.pop(context, true);
-      return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not save task')),
-    );
   }
 
   @override

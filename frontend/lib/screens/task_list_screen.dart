@@ -8,7 +8,6 @@ import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
-import 'workload_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
   const TaskListScreen({super.key});
@@ -165,16 +164,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
       appBar: AppBar(
         title: const Text('Tasks'),
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const WorkloadScreen()),
-              );
-            },
-            icon: const Icon(Icons.people_outline),
-            tooltip: 'Workload',
-          ),
           IconButton(
             onPressed: _togglePrioritySort,
             icon: Icon(

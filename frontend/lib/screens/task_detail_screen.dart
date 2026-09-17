@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
 import '../widgets/status_tag.dart';
+import '../widgets/task_comments.dart';
 import 'task_form_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class TaskDetailScreen extends StatefulWidget {
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   late Task _task;
   bool _isDeleting = false;
+
+  bool get _isManager => ApiService.instance.isManager;
 
   @override
   void initState() {
@@ -86,7 +89,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Reassign task'),
+              title: const Text('Assign task to employee'),
               content: users.isEmpty
                   ? const Text('No users available')
                   : DropdownButton<AppUser>(
@@ -110,9 +113,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
               actions: [
                 TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () => Navigator.pop(context),
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
                   child: const Text('Cancel'),
                 ),
                 TextButton(
@@ -122,12 +123,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           setDialogState(() {
                             isSaving = true;
                           });
-                          final success = await ApiService.instance
-                              .reassignTask(_task.id!, selected!.id);
+                          final error = await ApiService.instance.reassignTask(
+                            _task.id!,
+                            selected!.id,
+                          );
                           if (!context.mounted) {
                             return;
                           }
-                          if (success) {
+                          if (error == null) {
                             Navigator.pop(context, selected);
                             return;
                           }
@@ -135,9 +138,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             isSaving = false;
                           });
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Could not reassign task'),
-                            ),
+                            SnackBar(content: Text(error)),
                           );
                         },
                   child: isSaving
@@ -164,7 +165,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Reassigned to ${newAssignee.username}')),
+      SnackBar(content: Text('Assigned to ${newAssignee.username}')),
     );
   }
 
@@ -177,7 +178,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete task'),
+          title: const Text('Confirm deletion'),
           content: const Text('Are you sure you want to delete this task?'),
           actions: [
             TextButton(
@@ -294,21 +295,23 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   PriorityTag(priority: _task.priority),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final priority in const ['Low', 'Medium', 'High'])
-                        ChoiceChip(
-                          label: Text(priority),
-                          selected: _task.priority == priority,
-                          onSelected: _isDeleting
-                              ? null
-                              : (_) => _setPriority(priority),
-                        ),
-                    ],
-                  ),
+                  if (_isManager) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final priority in const ['Low', 'Medium', 'High'])
+                          ChoiceChip(
+                            label: Text(priority),
+                            selected: _task.priority == priority,
+                            onSelected: _isDeleting
+                                ? null
+                                : (_) => _setPriority(priority),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -366,40 +369,46 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             title: const Text('Assignee'),
             subtitle: Text(_task.assigneeName),
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isDeleting ? null : _openEditForm,
-                  child: const Text('Edit'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isDeleting ? null : _openReassignDialog,
-                  child: const Text('Reassign'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _isDeleting ? null : _confirmDelete,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
+          if (_isManager) ...[
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isDeleting ? null : _openEditForm,
+                    child: const Text('Edit'),
                   ),
-                  child: _isDeleting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Delete'),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isDeleting ? null : _openReassignDialog,
+                    child: const Text('Assign'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isDeleting ? null : _confirmDelete,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                    child: _isDeleting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Delete'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (_task.id != null) ...[
+            const SizedBox(height: 32),
+            TaskCommentsSection(taskId: _task.id!),
+          ],
         ],
       ),
     );

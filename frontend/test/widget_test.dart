@@ -6,7 +6,7 @@ void main() {
   testWidgets('Login screen shows title and form', (WidgetTester tester) async {
     await tester.pumpWidget(const TaskTrackerApp());
 
-    expect(find.text('Task Tracker'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Task Manager'), findsOneWidget);
+    expect(find.text('Log in'), findsOneWidget);
   });
 }
