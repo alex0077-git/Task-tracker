@@ -1,11 +1,13 @@
 from django.contrib.auth import authenticate, login, logout
-from rest_framework import status
+from django.contrib.auth.models import User
+from rest_framework import status, viewsets
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import UserSerializer
+from .models import Task
+from .serializers import TaskSerializer, UserSerializer
 
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
@@ -43,3 +45,19 @@ class LogoutView(APIView):
     def post(self, request):
         logout(request._request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TaskViewSet(viewsets.ModelViewSet):
+    serializer_class = TaskSerializer
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get_queryset(self):
+        return Task.objects.all().order_by("-created_at")
+
+
+class UserListView(APIView):
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get(self, request):
+        users = User.objects.all().order_by("username")
+        return Response(UserSerializer(users, many=True).data)

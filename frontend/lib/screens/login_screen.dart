@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import 'task_list_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -50,8 +51,9 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login successful')),
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const TaskListScreen()),
       );
     }
   }
