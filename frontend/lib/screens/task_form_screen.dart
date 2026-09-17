@@ -5,7 +5,9 @@ import '../models/task.dart';
 import '../services/api_service.dart';
 
 class TaskFormScreen extends StatefulWidget {
-  const TaskFormScreen({super.key});
+  const TaskFormScreen({super.key, this.existingTask});
+
+  final Task? existingTask;
 
   @override
   State<TaskFormScreen> createState() => _TaskFormScreenState();
@@ -27,9 +29,19 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   bool _isSaving = false;
   String? _validationError;
 
+  bool get _isEditing => widget.existingTask != null;
+
   @override
   void initState() {
     super.initState();
+    final existing = widget.existingTask;
+    if (existing != null) {
+      _titleController.text = existing.title;
+      _descriptionController.text = existing.description;
+      _priority = existing.priority;
+      _status = existing.status;
+      _dueDate = existing.dueDate;
+    }
     _loadUsers();
   }
 
@@ -45,9 +57,19 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     if (!mounted) {
       return;
     }
+    AppUser? assignee;
+    final existingAssigneeId = widget.existingTask?.assignee;
+    if (existingAssigneeId != null) {
+      for (final user in users) {
+        if (user.id == existingAssigneeId) {
+          assignee = user;
+          break;
+        }
+      }
+    }
     setState(() {
       _users = users;
-      _assignee = users.isEmpty ? null : users.first;
+      _assignee = assignee ?? (users.isEmpty ? null : users.first);
       _isLoadingUsers = false;
     });
   }
@@ -95,6 +117,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     });
 
     final task = Task(
+      id: widget.existingTask?.id,
       title: title,
       description: _descriptionController.text.trim(),
       priority: _priority,
@@ -105,7 +128,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       isOverdue: false,
     );
 
-    final success = await ApiService.instance.createTask(task);
+    final success = _isEditing
+        ? await ApiService.instance.updateTask(task)
+        : await ApiService.instance.createTask(task);
     if (!mounted) {
       return;
     }
@@ -115,7 +140,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     });
 
     if (success) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
       return;
     }
 
@@ -127,7 +152,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New Task')),
+      appBar: AppBar(title: Text(_isEditing ? 'Edit Task' : 'New Task')),
       body: _isLoadingUsers
           ? const Center(child: CircularProgressIndicator())
           : ListView(

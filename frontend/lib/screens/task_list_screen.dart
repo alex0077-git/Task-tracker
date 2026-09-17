@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../services/api_service.dart';
+import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
@@ -39,6 +40,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const TaskFormScreen()),
+    );
+    await _loadTasks();
+  }
+
+  Future<void> _openTaskDetail(Task task) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
     );
     await _loadTasks();
   }
@@ -90,6 +99,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                             subtitle: Text(
                               '${task.assigneeName}  •  ${task.priority}  •  ${task.status}  •  ${_formatDate(task.dueDate)}',
                             ),
+                            onTap: () => _openTaskDetail(task),
                           ),
                         );
                       },

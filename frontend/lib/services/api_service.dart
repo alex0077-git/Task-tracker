@@ -80,4 +80,25 @@ class ApiService {
       return false;
     }
   }
+
+  Future<bool> updateTask(Task task) async {
+    if (task.id == null) {
+      return false;
+    }
+    try {
+      final response = await dio.patch('tasks/${task.id}/', data: task.toJson());
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteTask(int taskId) async {
+    try {
+      final response = await dio.delete('tasks/$taskId/');
+      return response.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
 }

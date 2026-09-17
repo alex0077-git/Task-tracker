@@ -30,3 +30,21 @@ class TaskSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+        extra_kwargs = {
+            "due_date": {
+                "error_messages": {
+                    "invalid": "Enter a valid date in YYYY-MM-DD format.",
+                    "required": "Due date is required.",
+                }
+            },
+            "priority": {
+                "error_messages": {
+                    "invalid_choice": "Priority must be one of: Low, Medium, High.",
+                }
+            },
+            "status": {
+                "error_messages": {
+                    "invalid_choice": "Status must be one of: To Do, In Progress, Completed.",
+                }
+            },
+        }

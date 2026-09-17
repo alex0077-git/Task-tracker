@@ -1,0 +1,176 @@
+import 'package:flutter/material.dart';
+
+import '../models/task.dart';
+import '../services/api_service.dart';
+import 'task_form_screen.dart';
+
+class TaskDetailScreen extends StatefulWidget {
+  const TaskDetailScreen({super.key, required this.task});
+
+  final Task task;
+
+  @override
+  State<TaskDetailScreen> createState() => _TaskDetailScreenState();
+}
+
+class _TaskDetailScreenState extends State<TaskDetailScreen> {
+  late Task _task;
+  bool _isDeleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.task;
+  }
+
+  String _formatDate(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  Future<void> _openEditForm() async {
+    final didSave = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskFormScreen(existingTask: _task),
+      ),
+    );
+    if (!mounted || didSave != true || _task.id == null) {
+      return;
+    }
+
+    final tasks = await ApiService.instance.getTasks();
+    final updated = tasks.where((task) => task.id == _task.id);
+    if (!mounted || updated.isEmpty) {
+      return;
+    }
+    setState(() {
+      _task = updated.first;
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    if (_task.id == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete task'),
+          content: const Text('Are you sure you want to delete this task?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    final success = await ApiService.instance.deleteTask(_task.id!);
+    if (!mounted) {
+      return;
+    }
+
+    if (success) {
+      Navigator.pop(context, true);
+      return;
+    }
+
+    setState(() {
+      _isDeleting = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not delete task')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final description = _task.description.trim().isEmpty
+        ? 'No description'
+        : _task.description;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Task details')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            _task.title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(description),
+          const SizedBox(height: 24),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Priority'),
+            subtitle: Text(_task.priority),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Status'),
+            subtitle: Text(_task.status),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Due date'),
+            subtitle: Text(_formatDate(_task.dueDate)),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Assignee'),
+            subtitle: Text(_task.assigneeName),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isDeleting ? null : _openEditForm,
+                  child: const Text('Edit'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _isDeleting ? null : _confirmDelete,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  child: _isDeleting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Delete'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
