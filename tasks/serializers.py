@@ -10,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "is_staff", "role"]
+        fields = ["id", "username", "email", "is_staff", "is_active", "role"]
 
     def get_role(self, user):
         return "admin" if is_manager(user) else "employee"
