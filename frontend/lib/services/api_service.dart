@@ -116,6 +116,9 @@ class ApiService {
   Future<List<Task>> getTasks({
     bool overdueOnly = false,
     String? searchQuery,
+    String? statusFilter,
+    String? priorityFilter,
+    int? assigneeFilter,
   }) async {
     try {
       final trimmedSearch = searchQuery?.trim();
@@ -125,6 +128,11 @@ class ApiService {
           if (overdueOnly) 'overdue': 'true',
           if (trimmedSearch != null && trimmedSearch.isNotEmpty)
             'search': trimmedSearch,
+          if (statusFilter != null && statusFilter.isNotEmpty)
+            'status': statusFilter,
+          if (priorityFilter != null && priorityFilter.isNotEmpty)
+            'priority': priorityFilter,
+          'assignee': ?assigneeFilter,
         },
       );
       if (response.statusCode != 200 || response.data is! List) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
 import '../widgets/overdue_badge.dart';
@@ -19,17 +20,34 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
+  static const _allOption = 'All';
+  static const _statuses = ['All', 'To Do', 'In Progress', 'Completed'];
+  static const _priorities = ['All', 'Low', 'Medium', 'High'];
+
   final _searchController = TextEditingController();
   List<Task> _tasks = [];
+  List<AppUser> _users = [];
   bool _isLoading = true;
   bool _sortByPriority = false;
   bool _overdueOnly = false;
   String _searchQuery = '';
+  String _statusFilter = _allOption;
+  String _priorityFilter = _allOption;
+  int? _assigneeFilter;
+  int _filterVersion = 0;
   Timer? _searchDebounce;
+
+  bool get _hasActiveFilters =>
+      _searchQuery.isNotEmpty ||
+      _overdueOnly ||
+      _statusFilter != _allOption ||
+      _priorityFilter != _allOption ||
+      _assigneeFilter != null;
 
   @override
   void initState() {
     super.initState();
+    _loadUsers();
     _loadTasks();
   }
 
@@ -40,6 +58,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
     super.dispose();
   }
 
+  Future<void> _loadUsers() async {
+    final users = await ApiService.instance.getUsers();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _users = users;
+    });
+  }
+
   Future<void> _loadTasks() async {
     setState(() {
       _isLoading = true;
@@ -47,6 +75,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
     final tasks = await ApiService.instance.getTasks(
       overdueOnly: _overdueOnly,
       searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+      statusFilter: _statusFilter == _allOption ? null : _statusFilter,
+      priorityFilter: _priorityFilter == _allOption ? null : _priorityFilter,
+      assigneeFilter: _assigneeFilter,
     );
     if (!mounted) {
       return;
@@ -79,6 +110,20 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
     setState(() {
       _searchQuery = '';
+    });
+    _loadTasks();
+  }
+
+  void _clearFilters() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _overdueOnly = false;
+      _statusFilter = _allOption;
+      _priorityFilter = _allOption;
+      _assigneeFilter = null;
+      _filterVersion += 1;
     });
     _loadTasks();
   }
@@ -158,7 +203,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           if (item.id == task.id) _taskWithStatus(item, newStatus) else item,
       ];
     });
-    if (_overdueOnly || _searchQuery.isNotEmpty) {
+    if (_hasActiveFilters) {
       await _loadTasks();
     }
     if (!mounted) {
@@ -181,11 +226,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   String get _emptyMessage {
-    if (_searchQuery.isNotEmpty) {
+    if (_hasActiveFilters) {
       return 'No tasks found';
-    }
-    if (_overdueOnly) {
-      return 'No overdue tasks';
     }
     return 'No tasks yet';
   }
@@ -258,10 +300,117 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   },
                 ),
                 const SizedBox(height: 8),
-                FilterChip(
-                  label: const Text('Overdue only'),
-                  selected: _overdueOnly,
-                  onSelected: _toggleOverdueFilter,
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('status-$_filterVersion'),
+                        initialValue: _statusFilter,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Status',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: _statuses
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() {
+                            _statusFilter = value;
+                          });
+                          _loadTasks();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('priority-$_filterVersion'),
+                        initialValue: _priorityFilter,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Priority',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: _priorities
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() {
+                            _priorityFilter = value;
+                          });
+                          _loadTasks();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<int?>(
+                        key: ValueKey('assignee-$_filterVersion'),
+                        initialValue: _assigneeFilter,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Assignee',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('All'),
+                          ),
+                          for (final user in _users)
+                            DropdownMenuItem<int?>(
+                              value: user.id,
+                              child: Text(user.username),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _assigneeFilter = value;
+                          });
+                          _loadTasks();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilterChip(
+                      label: const Text('Overdue only'),
+                      selected: _overdueOnly,
+                      onSelected: _toggleOverdueFilter,
+                    ),
+                    if (_hasActiveFilters)
+                      ActionChip(
+                        label: const Text('Clear Filters'),
+                        avatar: const Icon(Icons.filter_alt_off, size: 18),
+                        onPressed: _clearFilters,
+                      ),
+                  ],
                 ),
               ],
             ),

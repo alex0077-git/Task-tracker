@@ -84,6 +84,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(title__icontains=search)
+        status_value = self.request.query_params.get("status")
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        priority_value = self.request.query_params.get("priority")
+        if priority_value:
+            queryset = queryset.filter(priority=priority_value)
+        assignee_value = self.request.query_params.get("assignee")
+        if assignee_value:
+            queryset = queryset.filter(assignee_id=assignee_value)
         return queryset.order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
