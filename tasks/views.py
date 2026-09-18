@@ -83,7 +83,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             ).exclude(status=Task.Status.COMPLETED)
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(title__icontains=search)
+            queryset = queryset.filter(title__istartswith=search)
         status_value = self.request.query_params.get("status")
         if status_value:
             queryset = queryset.filter(status=status_value)

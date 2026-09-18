@@ -57,9 +57,8 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
       return _users;
     }
     return _users.where((user) {
-      return user.username.toLowerCase().contains(query) ||
-          user.email.toLowerCase().contains(query) ||
-          user.roleLabel.toLowerCase().contains(query);
+      return user.username.toLowerCase().startsWith(query) ||
+          user.email.toLowerCase().startsWith(query);
     }).toList();
   }
 
