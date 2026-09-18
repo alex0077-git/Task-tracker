@@ -81,6 +81,9 @@ class TaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 due_date__lt=timezone.now().date(),
             ).exclude(status=Task.Status.COMPLETED)
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(title__icontains=search)
         return queryset.order_by("-created_at")
 
     def create(self, request, *args, **kwargs):

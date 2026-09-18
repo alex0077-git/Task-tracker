@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -17,15 +19,25 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
+  final _searchController = TextEditingController();
   List<Task> _tasks = [];
   bool _isLoading = true;
   bool _sortByPriority = false;
   bool _overdueOnly = false;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadTasks();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTasks() async {
@@ -34,6 +46,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     });
     final tasks = await ApiService.instance.getTasks(
       overdueOnly: _overdueOnly,
+      searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
     );
     if (!mounted) {
       return;
@@ -42,6 +55,32 @@ class _TaskListScreenState extends State<TaskListScreen> {
       _tasks = tasks;
       _isLoading = false;
     });
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      final trimmed = value.trim();
+      if (trimmed == _searchQuery) {
+        return;
+      }
+      setState(() {
+        _searchQuery = trimmed;
+      });
+      _loadTasks();
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    if (_searchQuery.isEmpty) {
+      return;
+    }
+    setState(() {
+      _searchQuery = '';
+    });
+    _loadTasks();
   }
 
   Future<void> _openCreateForm() async {
@@ -119,7 +158,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
           if (item.id == task.id) _taskWithStatus(item, newStatus) else item,
       ];
     });
-    if (_overdueOnly) {
+    if (_overdueOnly || _searchQuery.isNotEmpty) {
       await _loadTasks();
     }
     if (!mounted) {
@@ -139,6 +178,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
     return [..._tasks]..sort((a, b) {
       return (rank[a.priority] ?? 3).compareTo(rank[b.priority] ?? 3);
     });
+  }
+
+  String get _emptyMessage {
+    if (_searchQuery.isNotEmpty) {
+      return 'No tasks found';
+    }
+    if (_overdueOnly) {
+      return 'No overdue tasks';
+    }
+    return 'No tasks yet';
   }
 
   void _togglePrioritySort() {
@@ -184,13 +233,37 @@ class _TaskListScreenState extends State<TaskListScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FilterChip(
-                label: const Text('Overdue only'),
-                selected: _overdueOnly,
-                onSelected: _toggleOverdueFilter,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks by title',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: _clearSearch,
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'Clear search',
+                          ),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (value) {
+                    setState(() {});
+                    _onSearchChanged(value);
+                  },
+                ),
+                const SizedBox(height: 8),
+                FilterChip(
+                  label: const Text('Overdue only'),
+                  selected: _overdueOnly,
+                  onSelected: _toggleOverdueFilter,
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -203,13 +276,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                             physics: const AlwaysScrollableScrollPhysics(),
                             children: [
                               const SizedBox(height: 120),
-                              Center(
-                                child: Text(
-                                  _overdueOnly
-                                      ? 'No overdue tasks'
-                                      : 'No tasks yet',
-                                ),
-                              ),
+                              Center(child: Text(_emptyMessage)),
                             ],
                           )
                         : ListView.builder(

@@ -113,12 +113,18 @@ class ApiService {
     }
   }
 
-  Future<List<Task>> getTasks({bool overdueOnly = false}) async {
+  Future<List<Task>> getTasks({
+    bool overdueOnly = false,
+    String? searchQuery,
+  }) async {
     try {
+      final trimmedSearch = searchQuery?.trim();
       final response = await dio.get(
         'tasks/',
         queryParameters: {
           if (overdueOnly) 'overdue': 'true',
+          if (trimmedSearch != null && trimmedSearch.isNotEmpty)
+            'search': trimmedSearch,
         },
       );
       if (response.statusCode != 200 || response.data is! List) {
