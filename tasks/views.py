@@ -1,22 +1,28 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
-from django.db.models import Count, Q
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status, viewsets
-from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import AllowAny
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Task, TaskComment
-from .permissions import is_manager
+from .permissions import IsManager, is_manager
 from .serializers import (
     CreateUserSerializer,
     TaskCommentSerializer,
     TaskSerializer,
     UserSerializer,
 )
+
+# Session (CSRF-protected) for browsers; Token for mobile / non-browser clients.
+API_AUTHENTICATION_CLASSES = [TokenAuthentication, SessionAuthentication]
 
 
 def overdue_queryset():
@@ -25,18 +31,27 @@ def overdue_queryset():
     ).exclude(status=Task.Status.COMPLETED)
 
 
-class CsrfExemptSessionAuthentication(SessionAuthentication):
-    """Session auth without CSRF, for non-browser API clients such as Flutter."""
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class CsrfTokenView(APIView):
+    """Issue csrftoken cookie + return token for X-CSRFToken header (Flutter web)."""
 
-    def enforce_csrf(self, request):
-        return
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"csrfToken": get_token(request)})
 
 
 class LoginView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Browsers must send CSRF (cookie from GET /api/csrf/ + X-CSRFToken).
+        # Mobile can omit CSRF and use the returned auth token afterward.
+        if "csrftoken" in request.COOKIES or request.META.get("HTTP_X_CSRFTOKEN"):
+            SessionAuthentication().enforce_csrf(request)
+
         username = request.data.get("username")
         password = request.data.get("password")
         user = authenticate(
@@ -51,36 +66,37 @@ class LoginView(APIView):
             )
 
         login(request._request, user)
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        token, _ = Token.objects.get_or_create(user=user)
+        data = UserSerializer(user).data
+        data["token"] = token.key
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
+    authentication_classes = API_AUTHENTICATION_CLASSES
 
     def post(self, request):
+        if isinstance(request.successful_authenticator, TokenAuthentication):
+            Token.objects.filter(user=request.user).delete()
         logout(request._request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class MeView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
-
-    def get(self, request):
-        return Response(UserSerializer(request.user).data)
-
-
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
-    authentication_classes = [CsrfExemptSessionAuthentication]
+    authentication_classes = API_AUTHENTICATION_CLASSES
+
+    def get_permissions(self):
+        if self.action in ("create", "update", "destroy"):
+            return [IsAuthenticated(), IsManager()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         queryset = Task.objects.all()
         if not is_manager(self.request.user):
             queryset = queryset.filter(assignee=self.request.user)
         if self.request.query_params.get("overdue") == "true":
-            queryset = queryset.filter(
-                due_date__lt=timezone.now().date(),
-            ).exclude(status=Task.Status.COMPLETED)
+            queryset = queryset.filter(pk__in=overdue_queryset())
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(title__istartswith=search)
@@ -95,30 +111,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(assignee_id=assignee_value)
         return queryset.order_by("-created_at")
 
-    def create(self, request, *args, **kwargs):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can create tasks."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can update task details."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can delete tasks."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().destroy(request, *args, **kwargs)
-
     def partial_update(self, request, *args, **kwargs):
         if not is_manager(request.user):
             allowed_fields = set(request.data.keys()) <= {"status"}
@@ -131,86 +123,22 @@ class TaskViewSet(viewsets.ModelViewSet):
 
 
 class UserListView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
+    authentication_classes = API_AUTHENTICATION_CLASSES
+    permission_classes = [IsAuthenticated, IsManager]
 
     def get(self, request):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can manage users."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
         users = User.objects.all().order_by("username")
         return Response(UserSerializer(users, many=True).data)
 
     def post(self, request):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can manage users."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
         serializer = CreateUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
-class UserWorkloadView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
-
-    def get(self, request):
-        if not is_manager(request.user):
-            return Response(
-                {"detail": "Only managers can view employee workload."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        users = User.objects.annotate(
-            total_tasks=Count("tasks"),
-            completed=Count(
-                "tasks",
-                filter=Q(tasks__status=Task.Status.COMPLETED),
-            ),
-            pending=Count(
-                "tasks",
-                filter=~Q(tasks__status=Task.Status.COMPLETED),
-            ),
-        ).order_by("username")
-
-        workload = [
-            {
-                "id": user.id,
-                "username": user.username,
-                "total_tasks": user.total_tasks,
-                "completed": user.completed,
-                "pending": user.pending,
-            }
-            for user in users
-        ]
-        return Response(workload)
-
-
-class DashboardView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
-
-    def get(self, request):
-        if not is_manager(request.user):
-            tasks = Task.objects.filter(assignee=request.user)
-        else:
-            tasks = Task.objects.all()
-        return Response(
-            {
-                "total": tasks.count(),
-                "pending": tasks.filter(status=Task.Status.TO_DO).count(),
-                "in_progress": tasks.filter(status=Task.Status.IN_PROGRESS).count(),
-                "completed": tasks.filter(status=Task.Status.COMPLETED).count(),
-                "overdue": overdue_queryset().filter(
-                    pk__in=tasks.values("pk"),
-                ).count(),
-            }
-        )
-
-
 class TaskCommentView(APIView):
-    authentication_classes = [CsrfExemptSessionAuthentication]
+    authentication_classes = API_AUTHENTICATION_CLASSES
 
     def _get_task(self, request, task_id):
         queryset = Task.objects.all()

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/task_counts.dart';
-import '../services/api_service.dart';
+import '../shared/dashboard_controller.dart';
 import '../widgets/work_overview_chart.dart';
 import 'task_form_screen.dart';
 
@@ -13,32 +12,27 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  TaskCounts _counts = const TaskCounts(
-    toDo: 0,
-    pending: 0,
-    completed: 0,
-    overdue: 0,
-  );
-  bool _isLoading = true;
+  final _dashboard = DashboardController();
 
   @override
   void initState() {
     super.initState();
-    _loadDashboard();
+    _dashboard.addListener(_onChanged);
+    _dashboard.load();
   }
 
-  Future<void> _loadDashboard() async {
-    setState(() {
-      _isLoading = true;
-    });
-    final tasks = await ApiService.instance.getTasks();
-    if (!mounted) {
-      return;
+  void _onChanged() {
+    if (mounted) {
+      setState(() {});
     }
-    setState(() {
-      _counts = TaskCounts.fromTasks(tasks);
-      _isLoading = false;
-    });
+  }
+
+  @override
+  void dispose() {
+    _dashboard
+      ..removeListener(_onChanged)
+      ..dispose();
+    super.dispose();
   }
 
   Future<void> _openCreateForm() async {
@@ -47,7 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       MaterialPageRoute(builder: (context) => const TaskFormScreen()),
     );
     if (created == true) {
-      await _loadDashboard();
+      await _dashboard.load();
     }
   }
 
@@ -58,7 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text('Home'),
         actions: [
           IconButton(
-            onPressed: _isLoading ? null : _loadDashboard,
+            onPressed: _dashboard.isLoading ? null : _dashboard.load,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
@@ -69,14 +63,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         tooltip: 'Create task',
         child: const Icon(Icons.add),
       ),
-      body: _isLoading
+      body: _dashboard.isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadDashboard,
+              onRefresh: _dashboard.load,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
                 children: [
-                  WorkOverviewChart(counts: _counts),
+                  WorkOverviewChart(counts: _dashboard.counts),
                 ],
               ),
             ),

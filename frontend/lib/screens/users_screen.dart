@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
 import '../services/api_service.dart';
+import '../widgets/create_user_dialog.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key, this.embedded = false});
@@ -39,7 +40,7 @@ class _UsersScreenState extends State<UsersScreen> {
   Future<void> _openCreateUser() async {
     final created = await showDialog<bool>(
       context: context,
-      builder: (context) => const _CreateUserDialog(),
+      builder: (context) => const CreateUserDialog(),
     );
     if (created == true) {
       await _loadUsers();
@@ -97,118 +98,6 @@ class _UsersScreenState extends State<UsersScreen> {
                       },
                     ),
             ),
-    );
-  }
-}
-
-class _CreateUserDialog extends StatefulWidget {
-  const _CreateUserDialog();
-
-  @override
-  State<_CreateUserDialog> createState() => _CreateUserDialogState();
-}
-
-class _CreateUserDialogState extends State<_CreateUserDialog> {
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isStaff = false;
-  bool _isSaving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
-    if (username.isEmpty || password.isEmpty) {
-      setState(() {
-        _error = 'Username and password are required';
-      });
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-      _error = null;
-    });
-
-    final error = await ApiService.instance.createUser(
-      username: username,
-      password: password,
-      isStaff: _isStaff,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (error == null) {
-      Navigator.pop(context, true);
-      return;
-    }
-    setState(() {
-      _isSaving = false;
-      _error = error;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Create user'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _usernameController,
-            enabled: !_isSaving,
-            decoration: const InputDecoration(labelText: 'Username'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _passwordController,
-            enabled: !_isSaving,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Password'),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Admin / Manager'),
-            value: _isStaff,
-            onChanged: _isSaving
-                ? null
-                : (value) {
-                    setState(() {
-                      _isStaff = value;
-                    });
-                  },
-          ),
-          if (_error != null)
-            Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: _isSaving ? null : _save,
-          child: _isSaving
-              ? const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Create'),
-        ),
-      ],
     );
   }
 }

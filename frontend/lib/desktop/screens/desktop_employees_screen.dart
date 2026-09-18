@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../models/app_user.dart';
-import '../../models/task.dart';
 import '../../screens/user_tasks_screen.dart';
-import '../../services/api_service.dart';
+import '../../shared/employees_controller.dart';
+import '../../widgets/create_user_dialog.dart';
 import '../desktop_theme.dart';
 
 class DesktopEmployeesScreen extends StatefulWidget {
@@ -23,17 +21,19 @@ class DesktopEmployeesScreen extends StatefulWidget {
 }
 
 class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
-  final _searchController = TextEditingController();
-  List<AppUser> _users = [];
-  List<Task> _tasks = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
-  Timer? _searchDebounce;
+  late final EmployeesController _employees;
 
   @override
   void initState() {
     super.initState();
-    _loadEmployees();
+    _employees = EmployeesController()..addListener(_onChanged);
+    _employees.load();
+  }
+
+  void _onChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -46,60 +46,28 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
-    _searchController.dispose();
+    _employees
+      ..removeListener(_onChanged)
+      ..dispose();
     super.dispose();
   }
 
-  List<AppUser> get _visibleUsers {
-    final query = _searchQuery.toLowerCase();
-    if (query.isEmpty) {
-      return _users;
-    }
-    return _users.where((user) {
-      return user.username.toLowerCase().startsWith(query) ||
-          user.email.toLowerCase().startsWith(query);
-    }).toList();
-  }
-
-  int _assignedCount(AppUser user) {
-    return _tasks.where((task) => task.assignee == user.id).length;
-  }
-
   Future<void> _loadEmployees({bool notifyChanged = false}) async {
-    setState(() {
-      _isLoading = true;
-    });
-    final results = await Future.wait([
-      ApiService.instance.getUsers(),
-      ApiService.instance.getTasks(),
-    ]);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _users = results[0] as List<AppUser>;
-      _tasks = results[1] as List<Task>;
-      _isLoading = false;
-    });
+    await _employees.load();
     if (notifyChanged) {
       widget.onDataChanged?.call();
     }
   }
 
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
-      setState(() {
-        _searchQuery = value.trim();
-      });
-    });
-  }
-
   Future<void> _openCreateEmployee() async {
     final created = await showDialog<bool>(
       context: context,
-      builder: (context) => const _CreateEmployeeDialog(),
+      builder: (context) => const CreateUserDialog(
+        title: 'Add Employee',
+        contentWidth: 360,
+        useFilledConfirm: true,
+        filledConfirmColor: DesktopColors.primary,
+      ),
     );
     if (created == true) {
       await _loadEmployees(notifyChanged: true);
@@ -121,7 +89,7 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final users = _visibleUsers;
+    final users = _employees.visibleUsers;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
@@ -159,8 +127,8 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
           SizedBox(
             width: 320,
             child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
+              controller: _employees.searchController,
+              onChanged: _employees.onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search employees...',
                 prefixIcon: const Icon(Icons.search, size: 20),
@@ -187,7 +155,7 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: DesktopColors.border),
               ),
-              child: _isLoading
+              child: _employees.isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : users.isEmpty
                       ? const Center(
@@ -272,7 +240,9 @@ class _DesktopEmployeesScreenState extends State<DesktopEmployeesScreen> {
                                         ),
                                         DataCell(Text(users[i].roleLabel)),
                                         DataCell(
-                                          Text('${_assignedCount(users[i])}'),
+                                          Text(
+                                            '${_employees.assignedCount(users[i])}',
+                                          ),
                                         ),
                                         DataCell(
                                           _StatusPill(
@@ -337,124 +307,6 @@ class _StatusPill extends StatelessWidget {
           fontSize: 12,
         ),
       ),
-    );
-  }
-}
-
-class _CreateEmployeeDialog extends StatefulWidget {
-  const _CreateEmployeeDialog();
-
-  @override
-  State<_CreateEmployeeDialog> createState() => _CreateEmployeeDialogState();
-}
-
-class _CreateEmployeeDialogState extends State<_CreateEmployeeDialog> {
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isStaff = false;
-  bool _isSaving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
-    if (username.isEmpty || password.isEmpty) {
-      setState(() {
-        _error = 'Username and password are required';
-      });
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-      _error = null;
-    });
-
-    final error = await ApiService.instance.createUser(
-      username: username,
-      password: password,
-      isStaff: _isStaff,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (error == null) {
-      Navigator.pop(context, true);
-      return;
-    }
-    setState(() {
-      _isSaving = false;
-      _error = error;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add Employee'),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _usernameController,
-              enabled: !_isSaving,
-              decoration: const InputDecoration(labelText: 'Username'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passwordController,
-              enabled: !_isSaving,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Admin / Manager'),
-              value: _isStaff,
-              onChanged: _isSaving
-                  ? null
-                  : (value) {
-                      setState(() {
-                        _isStaff = value;
-                      });
-                    },
-            ),
-            if (_error != null)
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _isSaving ? null : _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: DesktopColors.primary,
-          ),
-          child: _isSaving
-              ? const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Create'),
-        ),
-      ],
     );
   }
 }

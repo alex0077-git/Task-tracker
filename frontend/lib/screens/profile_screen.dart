@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/api_service.dart';
+import '../shared/profile_view_data.dart';
 import 'role_home.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -8,7 +8,7 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = ApiService.instance.currentUser;
+    final profile = ProfileViewData.fromCurrentUser();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
@@ -29,9 +29,7 @@ class ProfileScreen extends StatelessWidget {
                     radius: 28,
                     backgroundColor: const Color(0xFF3949AB),
                     child: Text(
-                      user == null || user.username.isEmpty
-                          ? '?'
-                          : user.username[0].toUpperCase(),
+                      profile.initial,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -45,20 +43,20 @@ class ProfileScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          user?.username ?? 'Unknown',
+                          profile.username,
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          user?.roleLabel ?? 'Employee',
+                          profile.roleLabel,
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
-                        if (user != null && user.email.isNotEmpty) ...[
+                        if (profile.hasEmail) ...[
                           const SizedBox(height: 4),
                           Text(
-                            user.email,
+                            profile.email,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],

@@ -1,14 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../shared/task_list_controller.dart';
 import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
-import '../widgets/status_tag.dart';
+import '../widgets/task_status_style.dart';
 import 'task_detail_screen.dart';
 import 'task_form_screen.dart';
 
@@ -20,112 +18,30 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
-  static const _allOption = 'All';
-  static const _statuses = ['All', 'To Do', 'In Progress', 'Completed'];
-  static const _priorities = ['All', 'Low', 'Medium', 'High'];
-
-  final _searchController = TextEditingController();
-  List<Task> _tasks = [];
-  List<AppUser> _users = [];
-  bool _isLoading = true;
+  late final TaskListController _query;
   bool _sortByPriority = false;
-  bool _overdueOnly = false;
-  String _searchQuery = '';
-  String _statusFilter = _allOption;
-  String _priorityFilter = _allOption;
-  int? _assigneeFilter;
-  int _filterVersion = 0;
-  Timer? _searchDebounce;
-
-  bool get _hasActiveFilters =>
-      _searchQuery.isNotEmpty ||
-      _overdueOnly ||
-      _statusFilter != _allOption ||
-      _priorityFilter != _allOption ||
-      _assigneeFilter != null;
 
   @override
   void initState() {
     super.initState();
-    _loadUsers();
-    _loadTasks();
+    _query = TaskListController(includeOverdueFilter: true)
+      ..addListener(_onQueryChanged);
+    _query.loadUsers();
+    _query.loadTasks();
+  }
+
+  void _onQueryChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
-    _searchController.dispose();
+    _query
+      ..removeListener(_onQueryChanged)
+      ..dispose();
     super.dispose();
-  }
-
-  Future<void> _loadUsers() async {
-    final users = await ApiService.instance.getUsers();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _users = users;
-    });
-  }
-
-  Future<void> _loadTasks() async {
-    setState(() {
-      _isLoading = true;
-    });
-    final tasks = await ApiService.instance.getTasks(
-      overdueOnly: _overdueOnly,
-      searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
-      statusFilter: _statusFilter == _allOption ? null : _statusFilter,
-      priorityFilter: _priorityFilter == _allOption ? null : _priorityFilter,
-      assigneeFilter: _assigneeFilter,
-    );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _tasks = tasks;
-      _isLoading = false;
-    });
-  }
-
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-      final trimmed = value.trim();
-      if (trimmed == _searchQuery) {
-        return;
-      }
-      setState(() {
-        _searchQuery = trimmed;
-      });
-      _loadTasks();
-    });
-  }
-
-  void _clearSearch() {
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    if (_searchQuery.isEmpty) {
-      return;
-    }
-    setState(() {
-      _searchQuery = '';
-    });
-    _loadTasks();
-  }
-
-  void _clearFilters() {
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    setState(() {
-      _searchQuery = '';
-      _overdueOnly = false;
-      _statusFilter = _allOption;
-      _priorityFilter = _allOption;
-      _assigneeFilter = null;
-      _filterVersion += 1;
-    });
-    _loadTasks();
   }
 
   Future<void> _openCreateForm() async {
@@ -133,7 +49,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       context,
       MaterialPageRoute(builder: (context) => const TaskFormScreen()),
     );
-    await _loadTasks();
+    await _query.loadTasks();
   }
 
   Future<void> _openTaskDetail(Task task) async {
@@ -141,7 +57,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       context,
       MaterialPageRoute(builder: (context) => TaskDetailScreen(task: task)),
     );
-    await _loadTasks();
+    await _query.loadTasks();
   }
 
   String? _nextStatus(String status) {
@@ -197,14 +113,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
       return;
     }
 
-    setState(() {
-      _tasks = [
-        for (final item in _tasks)
-          if (item.id == task.id) _taskWithStatus(item, newStatus) else item,
-      ];
-    });
-    if (_hasActiveFilters) {
-      await _loadTasks();
+    _query.replaceTask(_taskWithStatus(task, newStatus));
+    if (_query.hasActiveFilters) {
+      await _query.loadTasks();
     }
     if (!mounted) {
       return;
@@ -214,19 +125,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
-  List<Task> get _visibleTasks {
-    if (!_sortByPriority) {
-      return _tasks;
-    }
-
-    const rank = {'High': 0, 'Medium': 1, 'Low': 2};
-    return [..._tasks]..sort((a, b) {
-      return (rank[a.priority] ?? 3).compareTo(rank[b.priority] ?? 3);
-    });
-  }
+  List<Task> get _visibleTasks =>
+      _query.tasksSortedByPriority(_sortByPriority);
 
   String get _emptyMessage {
-    if (_hasActiveFilters) {
+    if (_query.hasActiveFilters) {
       return 'No tasks found';
     }
     return 'No tasks yet';
@@ -236,13 +139,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
     setState(() {
       _sortByPriority = !_sortByPriority;
     });
-  }
-
-  void _toggleOverdueFilter(bool selected) {
-    setState(() {
-      _overdueOnly = selected;
-    });
-    _loadTasks();
   }
 
   String _formatDueDate(DateTime date) {
@@ -265,7 +161,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 : 'Sort by priority',
           ),
           IconButton(
-            onPressed: _isLoading ? null : _loadTasks,
+            onPressed: _query.isLoading ? null : _query.loadTasks,
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),
@@ -279,15 +175,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
-                  controller: _searchController,
+                  controller: _query.searchController,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'Search tasks by title',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isEmpty
+                    suffixIcon: _query.searchController.text.isEmpty
                         ? null
                         : IconButton(
-                            onPressed: _clearSearch,
+                            onPressed: _query.clearSearch,
                             icon: const Icon(Icons.clear),
                             tooltip: 'Clear search',
                           ),
@@ -296,7 +192,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   ),
                   onChanged: (value) {
                     setState(() {});
-                    _onSearchChanged(value);
+                    _query.onSearchChanged(value);
                   },
                 ),
                 const SizedBox(height: 8),
@@ -304,15 +200,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        key: ValueKey('status-$_filterVersion'),
-                        initialValue: _statusFilter,
+                        key: ValueKey('status-${_query.filterVersion}'),
+                        initialValue: _query.statusFilter,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Status',
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
-                        items: _statuses
+                        items: TaskListController.statuses
                             .map(
                               (value) => DropdownMenuItem(
                                 value: value,
@@ -324,25 +220,22 @@ class _TaskListScreenState extends State<TaskListScreen> {
                           if (value == null) {
                             return;
                           }
-                          setState(() {
-                            _statusFilter = value;
-                          });
-                          _loadTasks();
+                          _query.setStatusFilter(value);
                         },
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        key: ValueKey('priority-$_filterVersion'),
-                        initialValue: _priorityFilter,
+                        key: ValueKey('priority-${_query.filterVersion}'),
+                        initialValue: _query.priorityFilter,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Priority',
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
-                        items: _priorities
+                        items: TaskListController.priorities
                             .map(
                               (value) => DropdownMenuItem(
                                 value: value,
@@ -354,18 +247,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
                           if (value == null) {
                             return;
                           }
-                          setState(() {
-                            _priorityFilter = value;
-                          });
-                          _loadTasks();
+                          _query.setPriorityFilter(value);
                         },
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonFormField<int?>(
-                        key: ValueKey('assignee-$_filterVersion'),
-                        initialValue: _assigneeFilter,
+                        key: ValueKey('assignee-${_query.filterVersion}'),
+                        initialValue: _query.assigneeFilter,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Assignee',
@@ -377,18 +267,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
                             value: null,
                             child: Text('All'),
                           ),
-                          for (final user in _users)
+                          for (final user in _query.users)
                             DropdownMenuItem<int?>(
                               value: user.id,
                               child: Text(user.username),
                             ),
                         ],
-                        onChanged: (value) {
-                          setState(() {
-                            _assigneeFilter = value;
-                          });
-                          _loadTasks();
-                        },
+                        onChanged: _query.setAssigneeFilter,
                       ),
                     ),
                   ],
@@ -401,14 +286,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   children: [
                     FilterChip(
                       label: const Text('Overdue only'),
-                      selected: _overdueOnly,
-                      onSelected: _toggleOverdueFilter,
+                      selected: _query.overdueOnly,
+                      onSelected: _query.setOverdueOnly,
                     ),
-                    if (_hasActiveFilters)
+                    if (_query.hasActiveFilters)
                       ActionChip(
                         label: const Text('Clear Filters'),
                         avatar: const Icon(Icons.filter_alt_off, size: 18),
-                        onPressed: _clearFilters,
+                        onPressed: _query.clearFilters,
                       ),
                   ],
                 ),
@@ -416,10 +301,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
           ),
           Expanded(
-            child: _isLoading
+            child: _query.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
-                    onRefresh: _loadTasks,
+                    onRefresh: _query.loadTasks,
                     child: _visibleTasks.isEmpty
                         ? ListView(
                             physics: const AlwaysScrollableScrollPhysics(),

@@ -4,6 +4,7 @@ class AppUser {
     required this.username,
     this.email = '',
     this.isStaff = false,
+    this.isManagerFlag = false,
     this.isActive = true,
     this.role = 'employee',
   });
@@ -12,10 +13,11 @@ class AppUser {
   final String username;
   final String email;
   final bool isStaff;
+  final bool isManagerFlag;
   final bool isActive;
   final String role;
 
-  bool get isManager => isStaff || role == 'admin';
+  bool get isManager => isManagerFlag || role == 'admin';
 
   String get roleLabel => isManager ? 'Admin / Manager' : 'Employee';
 
@@ -25,6 +27,7 @@ class AppUser {
       username: json['username'] as String,
       email: json['email'] as String? ?? '',
       isStaff: json['is_staff'] as bool? ?? false,
+      isManagerFlag: json['is_manager'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
       role: json['role'] as String? ?? 'employee',
     );

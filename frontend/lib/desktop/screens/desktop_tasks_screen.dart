@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -8,6 +6,7 @@ import '../../models/task.dart';
 import '../../screens/task_detail_screen.dart';
 import '../../screens/task_form_screen.dart';
 import '../../services/api_service.dart';
+import '../../shared/task_list_controller.dart';
 import '../../widgets/priority_tag.dart';
 import '../../widgets/task_status_style.dart';
 import '../desktop_theme.dart';
@@ -24,107 +23,53 @@ class DesktopTasksScreen extends StatefulWidget {
   final VoidCallback? onDataChanged;
   final bool isManager;
 
-  static const statuses = ['All', 'To Do', 'In Progress', 'Completed'];
-  static const priorities = ['All', 'Low', 'Medium', 'High'];
-
   @override
   State<DesktopTasksScreen> createState() => _DesktopTasksScreenState();
 }
 
 class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
-  static const _allOption = 'All';
   static const _pageSize = 5;
 
-  final _searchController = TextEditingController();
+  late final TaskListController _query;
   final _selectedIds = <int>{};
-
-  List<Task> _tasks = [];
-  List<AppUser> _users = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
-  String _statusFilter = _allOption;
-  String _priorityFilter = _allOption;
-  int? _assigneeFilter;
-  int _filterVersion = 0;
   int _page = 0;
-  Timer? _searchDebounce;
-
-  bool get _hasActiveFilters =>
-      _searchQuery.isNotEmpty ||
-      _statusFilter != _allOption ||
-      _priorityFilter != _allOption ||
-      (widget.isManager && _assigneeFilter != null);
 
   int get _pageCount {
-    if (_tasks.isEmpty) {
+    if (_query.tasks.isEmpty) {
       return 1;
     }
-    return (_tasks.length / _pageSize).ceil();
+    return (_query.tasks.length / _pageSize).ceil();
   }
 
   List<Task> get _pageTasks {
     final start = _page * _pageSize;
-    if (start >= _tasks.length) {
+    if (start >= _query.tasks.length) {
       return const [];
     }
-    final end = (start + _pageSize).clamp(0, _tasks.length);
-    return _tasks.sublist(start, end);
+    final end = (start + _pageSize).clamp(0, _query.tasks.length);
+    return _query.tasks.sublist(start, end);
   }
 
   @override
   void initState() {
     super.initState();
-    _loadUsers();
-    _loadTasks();
+    _query = TaskListController(
+      includeAssigneeUsers: widget.isManager,
+      onQueryChanged: () {
+        _page = 0;
+      },
+    )..addListener(_onQueryChanged);
+    _query.loadUsers();
+    _query.loadTasks();
   }
 
-  @override
-  void didUpdateWidget(covariant DesktopTasksScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshToken != widget.refreshToken) {
-      _loadUsers();
-      _loadTasks();
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadUsers() async {
-    if (!widget.isManager) {
-      return;
-    }
-    final users = await ApiService.instance.getUsers();
+  void _onQueryChanged() {
     if (!mounted) {
       return;
     }
     setState(() {
-      _users = users;
-    });
-  }
-
-  Future<void> _loadTasks({bool notifyChanged = false}) async {
-    setState(() {
-      _isLoading = true;
-    });
-    final tasks = await ApiService.instance.getTasks(
-      searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
-      statusFilter: _statusFilter == _allOption ? null : _statusFilter,
-      priorityFilter: _priorityFilter == _allOption ? null : _priorityFilter,
-      assigneeFilter: _assigneeFilter,
-    );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _tasks = tasks;
-      _isLoading = false;
       _selectedIds.removeWhere(
-        (id) => tasks.every((task) => task.id != id),
+        (id) => _query.tasks.every((task) => task.id != id),
       );
       if (_page >= _pageCount) {
         _page = _pageCount - 1;
@@ -133,38 +78,30 @@ class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
         _page = 0;
       }
     });
-    if (notifyChanged) {
-      widget.onDataChanged?.call();
+  }
+
+  @override
+  void didUpdateWidget(covariant DesktopTasksScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _query.loadUsers();
+      _loadTasks(notifyChanged: false);
     }
   }
 
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-      final trimmed = value.trim();
-      if (trimmed == _searchQuery) {
-        return;
-      }
-      setState(() {
-        _searchQuery = trimmed;
-        _page = 0;
-      });
-      _loadTasks();
-    });
+  @override
+  void dispose() {
+    _query
+      ..removeListener(_onQueryChanged)
+      ..dispose();
+    super.dispose();
   }
 
-  void _clearFilters() {
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    setState(() {
-      _searchQuery = '';
-      _statusFilter = _allOption;
-      _priorityFilter = _allOption;
-      _assigneeFilter = null;
-      _filterVersion += 1;
-      _page = 0;
-    });
-    _loadTasks();
+  Future<void> _loadTasks({bool notifyChanged = false}) async {
+    await _query.loadTasks();
+    if (notifyChanged) {
+      widget.onDataChanged?.call();
+    }
   }
 
   Future<void> _openCreate() async {
@@ -251,10 +188,10 @@ class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final start = _tasks.isEmpty ? 0 : (_page * _pageSize) + 1;
-    final end = _tasks.isEmpty
+    final start = _query.tasks.isEmpty ? 0 : (_page * _pageSize) + 1;
+    final end = _query.tasks.isEmpty
         ? 0
-        : ((_page + 1) * _pageSize).clamp(0, _tasks.length);
+        : ((_page + 1) * _pageSize).clamp(0, _query.tasks.length);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
@@ -291,38 +228,20 @@ class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
           ),
           const SizedBox(height: 20),
           _FiltersBar(
-            searchController: _searchController,
-            statusFilter: _statusFilter,
-            priorityFilter: _priorityFilter,
-            assigneeFilter: _assigneeFilter,
-            users: _users,
-            filterVersion: _filterVersion,
-            hasActiveFilters: _hasActiveFilters,
+            searchController: _query.searchController,
+            statusFilter: _query.statusFilter,
+            priorityFilter: _query.priorityFilter,
+            assigneeFilter: _query.assigneeFilter,
+            users: _query.users,
+            filterVersion: _query.filterVersion,
+            hasActiveFilters: _query.hasActiveFilters,
             showAssigneeFilter: widget.isManager,
-            onSearchChanged: _onSearchChanged,
-            onStatusChanged: (value) {
-              setState(() {
-                _statusFilter = value;
-                _page = 0;
-              });
-              _loadTasks();
-            },
-            onPriorityChanged: (value) {
-              setState(() {
-                _priorityFilter = value;
-                _page = 0;
-              });
-              _loadTasks();
-            },
-            onAssigneeChanged: (value) {
-              setState(() {
-                _assigneeFilter = value;
-                _page = 0;
-              });
-              _loadTasks();
-            },
-            onClear: _clearFilters,
-            onRefresh: _loadTasks,
+            onSearchChanged: _query.onSearchChanged,
+            onStatusChanged: _query.setStatusFilter,
+            onPriorityChanged: _query.setPriorityFilter,
+            onAssigneeChanged: _query.setAssigneeFilter,
+            onClear: _query.clearFilters,
+            onRefresh: () => _loadTasks(),
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -333,7 +252,7 @@ class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: DesktopColors.border),
               ),
-              child: _isLoading
+              child: _query.isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : Column(
                       children: [
@@ -517,7 +436,7 @@ class _DesktopTasksScreenState extends State<DesktopTasksScreen> {
                           child: Row(
                             children: [
                               Text(
-                                'Showing $start–$end of ${_tasks.length}',
+                                'Showing $start–$end of ${_query.tasks.length}',
                                 style: const TextStyle(
                                   color: DesktopColors.textSecondary,
                                   fontSize: 13,
@@ -655,7 +574,7 @@ class _FiltersBar extends StatelessWidget {
               isDense: true,
               border: OutlineInputBorder(),
             ),
-            items: DesktopTasksScreen.statuses
+            items: TaskListController.statuses
                 .map(
                   (value) => DropdownMenuItem(
                     value: value,
@@ -681,7 +600,7 @@ class _FiltersBar extends StatelessWidget {
               isDense: true,
               border: OutlineInputBorder(),
             ),
-            items: DesktopTasksScreen.priorities
+            items: TaskListController.priorities
                 .map(
                   (value) => DropdownMenuItem(
                     value: value,

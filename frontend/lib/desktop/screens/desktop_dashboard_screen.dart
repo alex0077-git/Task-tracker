@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/task.dart';
 import '../../models/task_counts.dart';
-import '../../services/api_service.dart';
+import '../../shared/dashboard_controller.dart';
 import '../../widgets/priority_tag.dart';
 import '../../widgets/task_status_style.dart';
 import '../desktop_theme.dart';
@@ -24,54 +24,48 @@ class DesktopDashboardScreen extends StatefulWidget {
 }
 
 class _DesktopDashboardScreenState extends State<DesktopDashboardScreen> {
-  List<Task> _tasks = [];
-  TaskCounts _counts = const TaskCounts(
-    toDo: 0,
-    pending: 0,
-    completed: 0,
-    overdue: 0,
-  );
-  bool _isLoading = true;
+  final _dashboard = DashboardController();
 
   @override
   void initState() {
     super.initState();
-    _loadDashboard();
+    _dashboard.addListener(_onChanged);
+    _dashboard.load();
+  }
+
+  void _onChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void didUpdateWidget(covariant DesktopDashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshToken != widget.refreshToken) {
-      _loadDashboard();
+      _dashboard.load();
     }
   }
 
-  Future<void> _loadDashboard() async {
-    setState(() {
-      _isLoading = true;
-    });
-    final tasks = await ApiService.instance.getTasks();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _tasks = tasks;
-      _counts = TaskCounts.fromTasks(tasks);
-      _isLoading = false;
-    });
+  @override
+  void dispose() {
+    _dashboard
+      ..removeListener(_onChanged)
+      ..dispose();
+    super.dispose();
   }
-
-  List<Task> get _recentTasks => _tasks.take(5).toList();
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_dashboard.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final counts = _dashboard.counts;
+    final recentTasks = _dashboard.recentTasks;
+
     return RefreshIndicator(
-      onRefresh: _loadDashboard,
+      onRefresh: _dashboard.load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -101,28 +95,28 @@ class _DesktopDashboardScreenState extends State<DesktopDashboardScreen> {
                 final cards = [
                   _SummaryCard(
                     label: 'Total Tasks',
-                    value: _counts.total,
+                    value: counts.total,
                     icon: Icons.assignment_outlined,
                     tint: DesktopColors.primarySoft,
                     iconColor: DesktopColors.primary,
                   ),
                   _SummaryCard(
                     label: 'In Progress',
-                    value: _counts.pending,
+                    value: counts.pending,
                     icon: Icons.timelapse_outlined,
                     tint: const Color(0xFFF3EEFF),
                     iconColor: DesktopColors.inProgress,
                   ),
                   _SummaryCard(
                     label: 'Completed',
-                    value: _counts.completed,
+                    value: counts.completed,
                     icon: Icons.check_circle_outline,
                     tint: const Color(0xFFE8F8EF),
                     iconColor: DesktopColors.success,
                   ),
                   _SummaryCard(
                     label: 'Overdue',
-                    value: _counts.overdue,
+                    value: counts.overdue,
                     icon: Icons.warning_amber_rounded,
                     tint: const Color(0xFFFDECEC),
                     iconColor: DesktopColors.danger,
@@ -158,10 +152,10 @@ class _DesktopDashboardScreenState extends State<DesktopDashboardScreen> {
               builder: (context, constraints) {
                 final sideBySide = constraints.maxWidth >= 960;
                 final recent = _RecentTasksCard(
-                  tasks: _recentTasks,
+                  tasks: recentTasks,
                   onViewAll: widget.onViewAllTasks,
                 );
-                final chart = _TasksByStatusCard(counts: _counts);
+                final chart = _TasksByStatusCard(counts: counts);
 
                 if (sideBySide) {
                   return Row(

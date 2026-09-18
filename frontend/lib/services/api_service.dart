@@ -14,23 +14,39 @@ class ApiService {
     if (!kIsWeb) {
       dio.interceptors.add(CookieManager(cookieJar));
     }
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (_authToken != null && _authToken!.isNotEmpty) {
+            options.headers['Authorization'] = 'Token $_authToken';
+          }
+          if (kIsWeb &&
+              _csrfToken != null &&
+              _csrfToken!.isNotEmpty &&
+              options.method.toUpperCase() != 'GET' &&
+              options.method.toUpperCase() != 'HEAD' &&
+              options.method.toUpperCase() != 'OPTIONS') {
+            options.headers['X-CSRFToken'] = _csrfToken;
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   static final ApiService instance = ApiService._();
 
   final CookieJar cookieJar = CookieJar();
   AppUser? currentUser;
+  String? _authToken;
+  String? _csrfToken;
 
-  // Phone and Chrome must hit the SAME Django process. Chrome runs at
-  // http://localhost:<port>, so it must call localhost (same-site cookies).
-  // The phone cannot use localhost (that would be the phone itself), so it
-  // uses this machine's LAN address instead.
-  static String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:8000/api/';
-    }
-    return 'http://192.168.0.102:8000/api/';
-  }
+  // Override at build/run time, e.g.:
+  // flutter run --dart-define=API_BASE_URL=http://192.168.0.102:8000/api/
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000/api/',
+  );
 
   final Dio dio = Dio(
     BaseOptions(
@@ -44,8 +60,24 @@ class ApiService {
 
   bool get isManager => currentUser?.isManager ?? false;
 
+  Future<void> _ensureCsrfToken() async {
+    if (!kIsWeb) {
+      return;
+    }
+    final response = await dio.get('csrf/');
+    if (response.statusCode == 200 && response.data is Map) {
+      final token = response.data['csrfToken'];
+      if (token is String && token.isNotEmpty) {
+        _csrfToken = token;
+      }
+    }
+  }
+
   Future<AppUser?> login(String username, String password) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.post(
         'login/',
         data: {
@@ -55,25 +87,34 @@ class ApiService {
       );
       if (response.statusCode != 200 || response.data is! Map) {
         currentUser = null;
+        _authToken = null;
         return null;
       }
-      currentUser = AppUser.fromJson(
-        Map<String, dynamic>.from(response.data as Map),
-      );
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final token = data['token'];
+      if (!kIsWeb && token is String && token.isNotEmpty) {
+        _authToken = token;
+      }
+      currentUser = AppUser.fromJson(data);
       return currentUser;
     } catch (_) {
       currentUser = null;
+      _authToken = null;
       return null;
     }
   }
 
   Future<void> logout() async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       await dio.post('logout/');
     } catch (_) {
-      // Session is cleared locally even if the server call fails.
+      // Session/token cleared locally even if the server call fails.
     }
     currentUser = null;
+    _authToken = null;
   }
 
   Future<List<AppUser>> getUsers() async {
@@ -96,12 +137,15 @@ class ApiService {
     required bool isStaff,
   }) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.post(
         'users/',
         data: {
           'username': username,
           'password': password,
-          'is_staff': isStaff,
+          'is_manager': isStaff,
         },
       );
       if (response.statusCode == 201) {
@@ -148,6 +192,9 @@ class ApiService {
 
   Future<String?> createTask(Task task) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.post('tasks/', data: task.toJson());
       if (response.statusCode == 201) {
         return null;
@@ -163,6 +210,9 @@ class ApiService {
       return 'Task is missing an id';
     }
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.patch('tasks/${task.id}/', data: task.toJson());
       if (response.statusCode == 200) {
         return null;
@@ -175,6 +225,9 @@ class ApiService {
 
   Future<bool> deleteTask(int taskId) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.delete('tasks/$taskId/');
       return response.statusCode == 204;
     } catch (_) {
@@ -182,22 +235,11 @@ class ApiService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getUserWorkload() async {
-    try {
-      final response = await dio.get('users/workload/');
-      if (response.statusCode != 200 || response.data is! List) {
-        return [];
-      }
-      return (response.data as List)
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
   Future<String?> reassignTask(int taskId, int newAssigneeId) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.patch(
         'tasks/$taskId/',
         data: {'assignee': newAssigneeId},
@@ -213,6 +255,9 @@ class ApiService {
 
   Future<bool> updateTaskStatus(int taskId, String newStatus) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.patch(
         'tasks/$taskId/',
         data: {'status': newStatus},
@@ -225,6 +270,9 @@ class ApiService {
 
   Future<bool> updateTaskPriority(int taskId, String newPriority) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.patch(
         'tasks/$taskId/',
         data: {'priority': newPriority},
@@ -251,6 +299,9 @@ class ApiService {
 
   Future<String?> addComment(int taskId, String body) async {
     try {
+      if (kIsWeb) {
+        await _ensureCsrfToken();
+      }
       final response = await dio.post(
         'tasks/$taskId/comments/',
         data: {'body': body},
@@ -261,18 +312,6 @@ class ApiService {
       return 'Could not add comment';
     } on DioException catch (error) {
       return _messageFromError(error);
-    }
-  }
-
-  Future<Map<String, dynamic>> getDashboardCounts() async {
-    try {
-      final response = await dio.get('dashboard/');
-      if (response.statusCode != 200 || response.data is! Map) {
-        return {};
-      }
-      return Map<String, dynamic>.from(response.data as Map);
-    } catch (_) {
-      return {};
     }
   }
 

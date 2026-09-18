@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
-import '../models/task.dart';
 import '../models/task_counts.dart';
-import '../services/api_service.dart';
+import '../shared/employees_controller.dart';
 import '../widgets/task_status_style.dart';
 import 'user_tasks_screen.dart';
 
@@ -17,36 +16,27 @@ class EmployeesScreen extends StatefulWidget {
 }
 
 class _EmployeesScreenState extends State<EmployeesScreen> {
-  List<AppUser> _users = [];
-  List<Task> _tasks = [];
-  bool _isLoading = true;
+  final _employees = EmployeesController();
 
   @override
   void initState() {
     super.initState();
-    _loadEmployees();
+    _employees.addListener(_onChanged);
+    _employees.load();
   }
 
-  List<Task> _tasksFor(AppUser user) {
-    return _tasks.where((task) => task.assignee == user.id).toList();
-  }
-
-  Future<void> _loadEmployees() async {
-    setState(() {
-      _isLoading = true;
-    });
-    final results = await Future.wait([
-      ApiService.instance.getUsers(),
-      ApiService.instance.getTasks(),
-    ]);
-    if (!mounted) {
-      return;
+  void _onChanged() {
+    if (mounted) {
+      setState(() {});
     }
-    setState(() {
-      _users = results[0] as List<AppUser>;
-      _tasks = results[1] as List<Task>;
-      _isLoading = false;
-    });
+  }
+
+  @override
+  void dispose() {
+    _employees
+      ..removeListener(_onChanged)
+      ..dispose();
+    super.dispose();
   }
 
   Future<void> _openUser(AppUser user) async {
@@ -59,16 +49,17 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
         ),
       ),
     );
-    await _loadEmployees();
+    await _employees.load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final content = _isLoading
+    final users = _employees.users;
+    final content = _employees.isLoading
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-            onRefresh: _loadEmployees,
-            child: _users.isEmpty
+            onRefresh: _employees.load,
+            child: users.isEmpty
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: const [
@@ -78,12 +69,12 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _users.length,
+                    itemCount: users.length,
                     separatorBuilder: (context, index) =>
                         const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final user = _users[index];
-                      final counts = TaskCounts.fromTasks(_tasksFor(user));
+                      final user = users[index];
+                      final counts = _employees.countsFor(user);
                       return _EmployeeCard(
                         username: user.username,
                         counts: counts,

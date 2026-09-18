@@ -6,7 +6,7 @@ import '../models/task.dart';
 import '../services/api_service.dart';
 import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
-import '../widgets/status_tag.dart';
+import '../widgets/task_status_style.dart';
 import '../widgets/task_comments.dart';
 import 'task_form_screen.dart';
 

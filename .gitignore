@@ -23,6 +23,7 @@ db.sqlite3-journal
 # Environment
 .env
 .env.*
+!.env.example
 
 # Testing / coverage
 .coverage

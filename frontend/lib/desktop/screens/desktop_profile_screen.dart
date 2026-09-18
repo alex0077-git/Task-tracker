@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../screens/role_home.dart';
-import '../../services/api_service.dart';
+import '../../shared/profile_view_data.dart';
 import '../desktop_theme.dart';
 
 class DesktopProfileScreen extends StatelessWidget {
@@ -9,10 +9,7 @@ class DesktopProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = ApiService.instance.currentUser;
-    final initial = (user == null || user.username.isEmpty)
-        ? '?'
-        : user.username[0].toUpperCase();
+    final profile = ProfileViewData.fromCurrentUser();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -55,7 +52,7 @@ class DesktopProfileScreen extends StatelessWidget {
                         radius: 36,
                         backgroundColor: DesktopColors.primarySoft,
                         child: Text(
-                          initial,
+                          profile.initial,
                           style: const TextStyle(
                             color: DesktopColors.primary,
                             fontSize: 28,
@@ -69,7 +66,7 @@ class DesktopProfileScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              user?.username ?? 'Unknown',
+                              profile.username,
                               style: const TextStyle(
                                 color: DesktopColors.textPrimary,
                                 fontSize: 22,
@@ -78,7 +75,7 @@ class DesktopProfileScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              user?.roleLabel ?? 'Employee',
+                              profile.roleLabel,
                               style: const TextStyle(
                                 color: DesktopColors.textSecondary,
                                 fontSize: 14,
@@ -94,19 +91,17 @@ class DesktopProfileScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   _InfoRow(
                     label: 'Username',
-                    value: user?.username ?? '—',
+                    value: profile.username,
                   ),
                   const SizedBox(height: 16),
                   _InfoRow(
                     label: 'Email',
-                    value: (user?.email.isNotEmpty ?? false)
-                        ? user!.email
-                        : '—',
+                    value: profile.hasEmail ? profile.email : '—',
                   ),
                   const SizedBox(height: 16),
                   _InfoRow(
                     label: 'Role',
-                    value: user?.roleLabel ?? '—',
+                    value: profile.roleLabel,
                   ),
                   const SizedBox(height: 28),
                   Align(
