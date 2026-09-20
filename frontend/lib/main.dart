@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'data/database_helper.dart';
 import 'screens/login_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DatabaseHelper.instance.database;
   runApp(const TaskTrackerApp());
 }
 
