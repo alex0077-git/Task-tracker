@@ -1,86 +1,94 @@
 # Engineering Task Tracker
 
-Internal task tracking for engineering work: **managers** create, assign, and edit tasks (and users); **employees** see their assigned tasks and update status. Comments are supported on tasks.
+Offline Flutter app for engineering task tracking. **Managers** create users, assign and edit tasks; **employees** see their own tasks, update status, and leave comments. Each install keeps its own local SQLite database — no server is required to run the shipped Windows or Android builds.
 
 ## Tech stack
 
-- **Client:** Flutter (`frontend/`) — mobile and responsive desktop shells
-- **API:** Django REST Framework (`tasks/`, `task_tracker/`)
-- **Auth:** Session cookies (Flutter web + CSRF) and DRF token auth (mobile)
-- **Data:** SQLite (`db.sqlite3`) + Django `User` + `UserProfile.is_manager` + `Task` / `TaskComment`
+| Layer | Implementation |
+|--------|----------------|
+| UI | Flutter (`frontend/`) — phone shells + responsive desktop shell |
+| Business logic & auth | `frontend/lib/services/api_service.dart` |
+| Database | Local SQLite via `sqflite` (Android) / `sqflite_common_ffi` (Windows/Linux) |
+| Passwords | PBKDF2-HMAC-SHA256 (`frontend/lib/data/password_hasher.dart`) |
+
+> **Legacy:** The Django project under `tasks/` and `task_tracker/` is **not** used by the current Flutter app. Keep it only if you still need the old HTTP API for reference.
 
 ## Roles
 
-App “manager” is **not** Django `is_staff`. It comes from:
+App role comes from `users.is_manager` in SQLite (exposed as `AppUser.isManager` / `role`).
 
-- `UserProfile.is_manager == True`, or
-- `user.is_superuser`
+| Role | Capabilities |
+|------|----------------|
+| **Manager** | All tasks and users; create/update/delete tasks; reassign; set priority; create users; comments on any accessible task |
+| **Employee** | Only tasks assigned to them; update **status** only; comments on those tasks |
 
-Django `/admin/` is restricted to **superusers** only.
-
-After login, `role_home.dart` → `homeForUser` / `ResponsiveAppHome`:
-
-- **Manager** → `AdminHomeScreen` (mobile) or `DesktopShell(isManager: true)`
-- **Employee** → `EmployeeShellScreen` (mobile) or `DesktopShell(isManager: false)`
+After login, `role_home.dart` → `homeForUser` / `ResponsiveAppHome` opens the manager or employee shell (mobile or desktop).
 
 ## Data flow
 
-1. `frontend/lib/main.dart` → `LoginScreen`
-2. Web: `GET /api/csrf/` then `POST /api/login/` with `X-CSRFToken` (session cookie via Dio `withCredentials`)
-3. Mobile: `POST /api/login/` → store returned `token` → send `Authorization: Token …` on later calls
-4. Role from API (`is_manager` / `role`) → manager or employee shell (`role_home.dart`)
-5. Tasks via `/api/tasks/`: managers full CRUD; employees list only their assignee-scoped tasks and may `PATCH` **status** only
-6. Other live endpoints: `/api/users/` (managers), `/api/tasks/{id}/comments/`
+1. `main.dart` initializes bindings, opens SQLite (`DatabaseHelper`), seeds a default manager if the DB is empty, then shows `LoginScreen`.
+2. `ApiService.login` looks up the user, checks `is_active`, verifies the password hash, and stores `currentUser` in memory.
+3. Screens call `ApiService` methods (same names as the old HTTP client). Those methods run SQL and enforce permissions — they do **not** call a network API.
+4. Logout clears `currentUser` only (session is in-memory; closing the app logs you out).
 
-API base URL comes from `--dart-define=API_BASE_URL=…` (default `http://localhost:8000/api/`).
+### Schema (local)
 
-## Environment
+- `users` — `id`, `username`, `password_hash`, `email`, `is_manager`, `is_active`
+- `tasks` — `id`, `title`, `description`, `priority`, `status`, `due_date`, `assignee_id`, `created_at`, `updated_at`
+- `task_comments` — `id`, `task_id`, `author_id`, `body`, `created_at`
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `DJANGO_SECRET_KEY` | Project root `.env` (see `.env.example`) | Django secret; required at startup |
-| `API_BASE_URL` | Flutter `--dart-define` | API root for non-web / LAN devices |
+DB file: `task_tracker.db` under the app documents directory (per device / per user profile).
 
-Copy `.env.example` → `.env` and set a real secret before running Django. Do not commit `.env`.
+## First launch
 
-## How to run
+If there are no users yet, the app seeds:
 
-### Backend (Django)
+| Username | Password | Role |
+|----------|----------|------|
+| `manager` | `manager123` | Manager |
 
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+Change this account (or create another manager and stop using the seed) before treating any install as production-ready. The seed password is currently hardcoded in `database_helper.dart`.
 
-On macOS/Linux:
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-Then:
-
-```powershell
-# Ensure .env exists with DJANGO_SECRET_KEY=...
-python manage.py migrate
-python manage.py createsuperuser   # optional; also set profile.is_manager for app managers
-python manage.py runserver 0.0.0.0:8000
-```
-
-### Frontend (Flutter)
+## How to run (development)
 
 ```powershell
 cd frontend
 flutter pub get
-
-# Web (CSRF trusted origin uses port 8080)
-flutter run -d chrome --web-port=8080
-
-# Phone / wireless — point at this machine's LAN IP
-flutter run -d <device> --dart-define=API_BASE_URL=http://192.168.0.102:8000/api/
+flutter run -d windows
+# or
+flutter run -d <android-device>
 ```
 
+Web is **not** supported (SQLite path throws on web).
 
+## How to build
+
+```powershell
+cd frontend
+flutter pub get
+flutter build windows --release
+flutter build apk --release
+```
+
+### Windows installer (single .exe)
+
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
+
+```powershell
+# After flutter build windows --release
+& "$env:LocalAppData\Programs\Inno Setup 6\ISCC.exe" installer\task_tracker.iss
+```
+
+Output: `dist\EngineeringTaskTracker-Setup.exe` (script lives in `installer/task_tracker.iss`).
+
+### Android APK
+
+`frontend\build\app\outputs\flutter-apk\app-release.apk`
+
+## Known limitations
+
+- **Per-device data only** — no sync between phone and PC installs.
+- **No remote error tracking** — `ApiService` often swallows exceptions into empty/`null` results; add Sentry (or similar) if you need production visibility.
+- **Seed credentials in source** — default manager password is hardcoded; change before hand-off to real users.
+- **README vs legacy Django** — ignore Django run/`API_BASE_URL` instructions if you are using the offline builds.
+- **Access model** — rules are enforced in Dart against the local DB; anyone with filesystem access to `task_tracker.db` can read task content (passwords are hashed).
