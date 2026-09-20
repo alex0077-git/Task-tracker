@@ -83,10 +83,4 @@ flutter run -d chrome --web-port=8080
 flutter run -d <device> --dart-define=API_BASE_URL=http://192.168.0.102:8000/api/
 ```
 
-## Known limitations / TODOs
 
-- **Uncommitted work:** Security hardening, shared Flutter controllers, and dead-code cleanup may still be local-only — commit and push before hand-off so `origin/main` matches this tree.
-- **Error tracking:** No Sentry/Crashlytics; `ApiService` often swallows errors into empty/`null` results. Add remote error reporting if you need production visibility.
-- **Old secret in git history:** A previous hardcoded `SECRET_KEY` lived in source; treat it as compromised even though the app now uses `.env`.
-- **Minor leftovers:** `user_tasks_screen.dart` still fetches all tasks then filters client-side; Flutter still uses `isStaff` naming in places while the API field is `is_manager`.
-- **Production CORS/CSRF:** Localhost allowlists/regexes are for development; replace with real web origins before deploy.
