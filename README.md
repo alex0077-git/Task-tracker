@@ -39,15 +39,7 @@ After login, `role_home.dart` → `homeForUser` / `ResponsiveAppHome` opens the 
 
 DB file: `task_tracker.db` under the app documents directory (per device / per user profile).
 
-## First launch
 
-If there are no users yet, the app seeds:
-
-| Username | Password | Role |
-|----------|----------|------|
-| `manager` | `manager123` | Manager |
-
-Change this account (or create another manager and stop using the seed) before treating any install as production-ready. The seed password is currently hardcoded in `database_helper.dart`.
 
 ## How to run (development)
 
@@ -88,7 +80,5 @@ Output: `dist\EngineeringTaskTracker-Setup.exe` (script lives in `installer/task
 ## Known limitations
 
 - **Per-device data only** — no sync between phone and PC installs.
-- **No remote error tracking** — `ApiService` often swallows exceptions into empty/`null` results; add Sentry (or similar) if you need production visibility.
-- **Seed credentials in source** — default manager password is hardcoded; change before hand-off to real users.
 - **Legacy Django** — unused by offline builds; see `archive/django-legacy/`.
-- **Access model** — rules are enforced in Dart against the local DB; anyone with filesystem access to `task_tracker.db` can read task content (passwords are hashed).
+
