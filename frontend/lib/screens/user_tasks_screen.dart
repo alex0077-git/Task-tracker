@@ -36,14 +36,14 @@ class _UserTasksScreenState extends State<UserTasksScreen> {
     setState(() {
       _isLoading = true;
     });
-    final tasks = await ApiService.instance.getTasks();
+    final tasks = await ApiService.instance.getTasks(
+      assigneeFilter: widget.assigneeId,
+    );
     if (!mounted) {
       return;
     }
     setState(() {
-      _tasks = tasks
-          .where((task) => task.assignee == widget.assigneeId)
-          .toList();
+      _tasks = tasks;
       _isLoading = false;
     });
   }

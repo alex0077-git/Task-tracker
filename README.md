@@ -11,7 +11,7 @@ Offline Flutter app for engineering task tracking. **Managers** create users, as
 | Database | Local SQLite via `sqflite` (Android) / `sqflite_common_ffi` (Windows/Linux) |
 | Passwords | PBKDF2-HMAC-SHA256 (`frontend/lib/data/password_hasher.dart`) |
 
-> **Legacy:** The Django project under `tasks/` and `task_tracker/` is **not** used by the current Flutter app. Keep it only if you still need the old HTTP API for reference.
+> **Legacy:** The old Django HTTP API lives under `archive/django-legacy/` and is **not** used by the current Flutter app. Kept for historical reference only.
 
 ## Roles
 
@@ -90,5 +90,5 @@ Output: `dist\EngineeringTaskTracker-Setup.exe` (script lives in `installer/task
 - **Per-device data only** — no sync between phone and PC installs.
 - **No remote error tracking** — `ApiService` often swallows exceptions into empty/`null` results; add Sentry (or similar) if you need production visibility.
 - **Seed credentials in source** — default manager password is hardcoded; change before hand-off to real users.
-- **README vs legacy Django** — ignore Django run/`API_BASE_URL` instructions if you are using the offline builds.
+- **Legacy Django** — unused by offline builds; see `archive/django-legacy/`.
 - **Access model** — rules are enforced in Dart against the local DB; anyone with filesystem access to `task_tracker.db` can read task content (passwords are hashed).

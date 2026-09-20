@@ -52,13 +52,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (_task.id == null) {
       return;
     }
-    final tasks = await ApiService.instance.getTasks();
-    final updated = tasks.where((task) => task.id == _task.id);
-    if (!mounted || updated.isEmpty) {
+    final updated = await ApiService.instance.getTask(_task.id!);
+    if (!mounted || updated == null) {
       return;
     }
     setState(() {
-      _task = updated.first;
+      _task = updated;
     });
   }
 

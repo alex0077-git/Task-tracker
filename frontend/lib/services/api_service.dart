@@ -3,6 +3,7 @@ import '../data/password_hasher.dart';
 import '../models/app_user.dart';
 import '../models/task.dart';
 import '../models/task_comment.dart';
+import '../utils/date_utils.dart';
 
 /// Local SQLite API — same surface as the former Django-backed Dio client.
 class ApiService {
@@ -168,6 +169,37 @@ ORDER BY t.created_at DESC
     }
   }
 
+  /// Loads one task by id, or null if missing / not accessible.
+  Future<Task?> getTask(int taskId) async {
+    if (!_requireAuth()) {
+      return null;
+    }
+    try {
+      if (!await _canAccessTask(taskId)) {
+        return null;
+      }
+      final db = await DatabaseHelper.instance.database;
+      final rows = await db.rawQuery(
+        '''
+SELECT t.id, t.title, t.description, t.priority, t.status, t.due_date,
+       t.assignee_id, t.created_at, t.updated_at,
+       u.username AS assignee_name
+FROM tasks t
+LEFT JOIN users u ON u.id = t.assignee_id
+WHERE t.id = ?
+LIMIT 1
+''',
+        [taskId],
+      );
+      if (rows.isEmpty) {
+        return null;
+      }
+      return _taskFromRow(rows.first);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> createTask(Task task) async {
     if (!_requireAuth()) {
       return 'Not logged in';
@@ -182,7 +214,7 @@ ORDER BY t.created_at DESC
     try {
       final conflict = await _assignmentConflict(
         assigneeId: task.assignee,
-        dueDate: _formatDate(task.dueDate),
+        dueDate: formatDate(task.dueDate),
         status: task.status,
       );
       if (conflict != null) {
@@ -195,7 +227,7 @@ ORDER BY t.created_at DESC
         'description': task.description,
         'priority': task.priority,
         'status': task.status,
-        'due_date': _formatDate(task.dueDate),
+        'due_date': formatDate(task.dueDate),
         'assignee_id': task.assignee,
         'created_at': now,
         'updated_at': now,
@@ -223,7 +255,7 @@ ORDER BY t.created_at DESC
     try {
       final conflict = await _assignmentConflict(
         assigneeId: task.assignee,
-        dueDate: _formatDate(task.dueDate),
+        dueDate: formatDate(task.dueDate),
         status: task.status,
         excludeTaskId: task.id,
       );
@@ -238,7 +270,7 @@ ORDER BY t.created_at DESC
           'description': task.description,
           'priority': task.priority,
           'status': task.status,
-          'due_date': _formatDate(task.dueDate),
+          'due_date': formatDate(task.dueDate),
           'assignee_id': task.assignee,
           'updated_at': _nowIso(),
         },
@@ -500,10 +532,6 @@ ORDER BY c.created_at ASC, c.id ASC
   Task _taskFromRow(Map<String, dynamic> row) {
     final dueDate = DateTime.parse(row['due_date'] as String);
     final status = row['status'] as String;
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final isOverdue =
-        status != 'Completed' && dueDate.isBefore(todayDate);
 
     return Task(
       id: row['id'] as int,
@@ -514,7 +542,7 @@ ORDER BY c.created_at ASC, c.id ASC
       dueDate: dueDate,
       assignee: row['assignee_id'] as int,
       assigneeName: row['assignee_name'] as String? ?? '',
-      isOverdue: isOverdue,
+      isOverdue: isDueDateOverdue(dueDate, status),
     );
   }
 
@@ -538,11 +566,4 @@ ORDER BY c.created_at ASC, c.id ASC
   }
 
   static String _nowIso() => DateTime.now().toIso8601String();
-
-  static String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
-  }
 }

@@ -1,3 +1,5 @@
+import '../utils/date_utils.dart';
+
 class Task {
   const Task({
     this.id,
@@ -42,17 +44,10 @@ class Task {
       'description': description,
       'priority': priority,
       'status': status,
-      'due_date': _formatDate(dueDate),
+      'due_date': formatDate(dueDate),
       'assignee': assignee,
       'assignee_name': assigneeName,
       'is_overdue': isOverdue,
     };
-  }
-
-  static String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
   }
 }

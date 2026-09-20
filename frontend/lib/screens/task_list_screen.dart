@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
 import '../shared/task_list_controller.dart';
+import '../utils/date_utils.dart';
 import '../widgets/overdue_badge.dart';
 import '../widgets/priority_tag.dart';
 import '../widgets/task_status_style.dart';
@@ -72,9 +73,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   Task _taskWithStatus(Task task, String status) {
-    final today = DateTime.now();
-    final dueDate = DateTime(task.dueDate.year, task.dueDate.month, task.dueDate.day);
-    final todayDate = DateTime(today.year, today.month, today.day);
     return Task(
       id: task.id,
       title: task.title,
@@ -84,7 +82,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       dueDate: task.dueDate,
       assignee: task.assignee,
       assigneeName: task.assigneeName,
-      isOverdue: status != 'Completed' && dueDate.isBefore(todayDate),
+      isOverdue: isDueDateOverdue(task.dueDate, status),
     );
   }
 

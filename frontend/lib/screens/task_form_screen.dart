@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
+import '../utils/date_utils.dart';
 
 class TaskFormScreen extends StatefulWidget {
   const TaskFormScreen({super.key, this.existingTask});
@@ -88,13 +89,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         _dueDate = selected;
       });
     }
-  }
-
-  String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
   }
 
   Future<void> _save() async {
@@ -229,7 +223,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Due date'),
                   subtitle: Text(
-                    _dueDate == null ? 'Select a date' : _formatDate(_dueDate!),
+                    _dueDate == null ? 'Select a date' : formatDate(_dueDate!),
                   ),
                   trailing: const Icon(Icons.calendar_today),
                   onTap: _isSaving ? null : _pickDueDate,
